@@ -30,3 +30,12 @@
 *.exe
 *.out
 *.app
+/SupersocksR.VC.VC.opendb
+/SupersocksR.VC.db
+/SupersocksR/obj/Debug
+/SupersocksR/bin/Debug
+/SupersocksR
+/SkylakeNAT/Debug
+/packages
+/Debug
+/.vs
