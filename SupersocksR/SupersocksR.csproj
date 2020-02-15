@@ -1,0 +1,213 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{EBC16EC3-1E4D-466B-81BA-2ADCE353DC5E}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SupersocksR</RootNamespace>
+    <AssemblyName>SupersocksR</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <TargetFrameworkProfile />
+    <IsWebBootstrapper>false</IsWebBootstrapper>
+    <PublishUrl>publish\</PublishUrl>
+    <Install>true</Install>
+    <InstallFrom>Disk</InstallFrom>
+    <UpdateEnabled>false</UpdateEnabled>
+    <UpdateMode>Foreground</UpdateMode>
+    <UpdateInterval>7</UpdateInterval>
+    <UpdateIntervalUnits>Days</UpdateIntervalUnits>
+    <UpdatePeriodically>false</UpdatePeriodically>
+    <UpdateRequired>false</UpdateRequired>
+    <MapFileExtensions>true</MapFileExtensions>
+    <ApplicationRevision>1</ApplicationRevision>
+    <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
+    <UseApplicationTrust>false</UseApplicationTrust>
+    <PublishWizardCompleted>true</PublishWizardCompleted>
+    <BootstrapperEnabled>true</BootstrapperEnabled>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>x86</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>TRACE;DEBUG;_NO_USAGE_PCAP_NET;_USE_RC4_SIMPLE_ENCIPHER</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CodeAnalysisRuleSet />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+    <CodeAnalysisRuleSet />
+  </PropertyGroup>
+  <PropertyGroup>
+    <ManifestCertificateThumbprint>4BD5B7D8F89A9ED81DBCF4D798B8F7C9CE8E4861</ManifestCertificateThumbprint>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ManifestKeyFile>SupersocksR_TemporaryKey.pfx</ManifestKeyFile>
+  </PropertyGroup>
+  <PropertyGroup>
+    <GenerateManifests>true</GenerateManifests>
+  </PropertyGroup>
+  <PropertyGroup>
+    <SignManifests>true</SignManifests>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="PcapDotNet.Base, Version=0.10.0.20588, Culture=neutral, PublicKeyToken=4b6f3e583145a652, processorArchitecture=MSIL">
+      <HintPath>..\packages\PcapDotNet.0.10.2\lib\net40\PcapDotNet.Base.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="PcapDotNet.Core, Version=0.10.0.20632, Culture=neutral, PublicKeyToken=4b6f3e583145a652, processorArchitecture=x86">
+      <HintPath>..\packages\PcapDotNet.0.10.2\lib\net40\PcapDotNet.Core.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="PcapDotNet.Core.Extensions, Version=0.10.0.20638, Culture=neutral, PublicKeyToken=4b6f3e583145a652, processorArchitecture=MSIL">
+      <HintPath>..\packages\PcapDotNet.0.10.2\lib\net40\PcapDotNet.Core.Extensions.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="PcapDotNet.Packets, Version=0.10.0.20603, Culture=neutral, PublicKeyToken=4b6f3e583145a652, processorArchitecture=MSIL">
+      <HintPath>..\packages\PcapDotNet.0.10.2\lib\net40\PcapDotNet.Packets.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Core\BufferSegment.cs" />
+    <Compile Include="Core\CheckSum.cs" />
+    <Compile Include="SkylakeNAT\Encryptor.cs" />
+    <Compile Include="Net\Ethernet.cs" />
+    <Compile Include="Net\Tools\Bits.cs" />
+    <Compile Include="Net\Tools\IPAddressRange.cs" />
+    <Compile Include="Net\NAT.cs" />
+    <Compile Include="Net\Dns\Dns2.cs" />
+    <Compile Include="Net\Dns\OpenDNS\DnsQuery.cs" />
+    <Compile Include="Net\Dns\OpenDNS\DnsResponse.cs" />
+    <Compile Include="Net\Dns\OpenDNS\Enum.cs" />
+    <Compile Include="Net\Dns\OpenDNS\RR\Address.cs" />
+    <Compile Include="Net\Dns\OpenDNS\RR\MX.cs" />
+    <Compile Include="Net\Dns\OpenDNS\RR\ResourceRecord.cs" />
+    <Compile Include="Net\Dns\OpenDNS\RR\ResourceRecordCollection.cs" />
+    <Compile Include="Net\Dns\OpenDNS\RR\SOA.cs" />
+    <Compile Include="Net\Entry\ILayerLocator.cs" />
+    <Compile Include="Net\Entry\Layer3Locator.cs" />
+    <Compile Include="Net\Icmp\IcmpFrame.cs" />
+    <Compile Include="Net\Icmp\IcmpLayer.cs" />
+    <Compile Include="Net\IPcb.cs" />
+    <Compile Include="Net\IP\IPFrame.cs" />
+    <Compile Include="Net\IP\IPLayer.cs" />
+    <Compile Include="Net\IP\IPv4Layer.cs" />
+    <Compile Include="Net\Pptp\Pptp.cs" />
+    <Compile Include="Net\Pptp\PptpListener.cs" />
+    <Compile Include="Net\Socket.cs" />
+    <Compile Include="Net\SocketScheduler.cs" />
+    <Compile Include="Net\Tcp\TcpFrame.cs" />
+    <Compile Include="Net\Tcp\TcpLayer.cs" />
+    <Compile Include="Net\Tcp\TcpPcb.cs" />
+    <Compile Include="Net\Tun\INetif.cs" />
+    <Compile Include="Net\Tun\Layer3Netif.cs" />
+    <Compile Include="Net\Udp\UdpFrame.cs" />
+    <Compile Include="Net\Udp\UdpLayer.cs" />
+    <Compile Include="OpenSSL\Core\Asn1DateTime.cs" />
+    <Compile Include="OpenSSL\Core\Asn1Encoding.cs" />
+    <Compile Include="OpenSSL\Core\Asn1Integer.cs" />
+    <Compile Include="OpenSSL\Core\Asn1Object.cs" />
+    <Compile Include="OpenSSL\Core\Asn1String.cs" />
+    <Compile Include="OpenSSL\Core\Base.cs" />
+    <Compile Include="OpenSSL\Core\BigNumber.cs" />
+    <Compile Include="OpenSSL\Core\BIO.cs" />
+    <Compile Include="OpenSSL\Core\Crypto.cs" />
+    <Compile Include="OpenSSL\Core\MemoryTracker.cs" />
+    <Compile Include="OpenSSL\Core\Native.cs" />
+    <Compile Include="OpenSSL\Core\Objects.cs" />
+    <Compile Include="OpenSSL\Core\OpenSslException.cs" />
+    <Compile Include="OpenSSL\Core\Password.cs" />
+    <Compile Include="OpenSSL\Core\Random.cs" />
+    <Compile Include="OpenSSL\Core\Stack.cs" />
+    <Compile Include="OpenSSL\Core\Threading.cs" />
+    <Compile Include="OpenSSL\Core\Version.cs" />
+    <Compile Include="OpenSSL\Crypto\Cipher.cs" />
+    <Compile Include="OpenSSL\Crypto\CryptoKey.cs" />
+    <Compile Include="OpenSSL\Crypto\DH.cs" />
+    <Compile Include="OpenSSL\Crypto\DSA.cs" />
+    <Compile Include="OpenSSL\Crypto\EC\BuiltinCurve.cs" />
+    <Compile Include="OpenSSL\Crypto\EC\DSASignature.cs" />
+    <Compile Include="OpenSSL\Crypto\EC\Group.cs" />
+    <Compile Include="OpenSSL\Crypto\EC\Key.cs" />
+    <Compile Include="OpenSSL\Crypto\EC\Method.cs" />
+    <Compile Include="OpenSSL\Crypto\EC\Point.cs" />
+    <Compile Include="OpenSSL\Crypto\HMAC.cs" />
+    <Compile Include="OpenSSL\Crypto\MessageDigest.cs" />
+    <Compile Include="OpenSSL\Crypto\RSA.cs" />
+    <Compile Include="OpenSSL\SSL\AlpnException.cs" />
+    <Compile Include="OpenSSL\SSL\ConnectionEnd.cs" />
+    <Compile Include="OpenSSL\SSL\Enums.cs" />
+    <Compile Include="OpenSSL\SSL\Extensions\Alpn.cs" />
+    <Compile Include="OpenSSL\SSL\Extensions\EnumExtensions.cs" />
+    <Compile Include="OpenSSL\SSL\Extensions\Errors.cs" />
+    <Compile Include="OpenSSL\SSL\Extensions\SNI.cs" />
+    <Compile Include="OpenSSL\SSL\Protocols.cs" />
+    <Compile Include="OpenSSL\SSL\Ssl.cs" />
+    <Compile Include="OpenSSL\SSL\SslCipher.cs" />
+    <Compile Include="OpenSSL\SSL\SslContext.cs" />
+    <Compile Include="OpenSSL\SSL\SslMethod.cs" />
+    <Compile Include="OpenSSL\SSL\SslStream.cs" />
+    <Compile Include="OpenSSL\SSL\SslStreamBase.cs" />
+    <Compile Include="OpenSSL\SSL\SslStreamClient.cs" />
+    <Compile Include="OpenSSL\SSL\SslStreamServer.cs" />
+    <Compile Include="OpenSSL\X509\Configuration.cs" />
+    <Compile Include="OpenSSL\X509\Identity.cs" />
+    <Compile Include="OpenSSL\X509\PKCS12.cs" />
+    <Compile Include="OpenSSL\X509\PKCS7.cs" />
+    <Compile Include="OpenSSL\X509\VerifyResult.cs" />
+    <Compile Include="OpenSSL\X509\X509Certificate.cs" />
+    <Compile Include="OpenSSL\X509\X509CertificateAuthority.cs" />
+    <Compile Include="OpenSSL\X509\X509CertificateInfo.cs" />
+    <Compile Include="OpenSSL\X509\X509Chain.cs" />
+    <Compile Include="OpenSSL\X509\X509Extension.cs" />
+    <Compile Include="OpenSSL\X509\X509Name.cs" />
+    <Compile Include="OpenSSL\X509\X509Object.cs" />
+    <Compile Include="OpenSSL\X509\X509Request.cs" />
+    <Compile Include="OpenSSL\X509\X509Store.cs" />
+    <Compile Include="OpenSSL\X509\X509StoreContext.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="Net\Routing\Route.cs" />
+    <Compile Include="SkylakeNAT\HashAlgorithm.cs" />
+    <Compile Include="SkylakeNAT\RC4.cs" />
+    <Compile Include="Net\Routing\RouteTableManager.cs" />
+    <Compile Include="SkylakeNAT\Router.cs" />
+    <Compile Include="Tun2Socks\Dnss.cs" />
+    <Compile Include="Tun2Socks\PAC.cs" />
+    <Compile Include="Tun2Socks\TUN2Socks.cs" />
+    <Compile Include="Tun2Socks\TUN2SocksSocket.cs" />
+    <Compile Include="Tun2Socks\TUN2SocksSocketScheduler.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5 SP1</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
