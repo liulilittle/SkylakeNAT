@@ -33,7 +33,7 @@
 #define 	EXIT_FATAL(flags)   do { if ((flags) & M_FATAL) {_exit(1);}} while (false)
 #define 	HAVE_VARARG_MACROS
 
-static BOOL
+inline static BOOL
 synchronized_deviceiocontrol(
 	_In_ HANDLE hDevice,
 	_In_ DWORD dwIoControlCode,

@@ -25,7 +25,10 @@ public:
         return ToString(TOSTRINGFORMAT_D);
     }
 	std::string				            ToString(ToStringFormat fmt);
-    void                                Clear();
+	inline void							Clear()
+	{
+		::memset(this, 0, sizeof(Guid));
+	}
     inline unsigned char*               ToArray()
     {
         return (unsigned char*)(void*)this;
@@ -45,7 +48,7 @@ public:
 
 public:
     template<typename TValue>
-    static TValue                       HexToNumber(unsigned char*& stream_ptr, unsigned char* endoff_ptr)
+    inline static TValue				HexToNumber(unsigned char*& stream_ptr, unsigned char* endoff_ptr)
     {
         TValue nu = 0;
         if (stream_ptr >= endoff_ptr)

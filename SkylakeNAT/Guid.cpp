@@ -83,11 +83,6 @@ std::string Guid::ToString(ToStringFormat fmt)
 	return std::string(buf);
 }
 
-void Guid::Clear()
-{
-    ::memset(this, 0, sizeof(Guid));
-}
-
 Guid::Guid()
 {
     Clear();

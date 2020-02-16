@@ -1,6 +1,6 @@
 #include "rc4.h"
 
-static void
+inline static void
 rc4_sbox(unsigned char* box, unsigned char* key, int keylen) {
     if (NULL == box || NULL == key || keylen <= 0)
         return;

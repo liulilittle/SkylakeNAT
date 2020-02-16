@@ -6,11 +6,11 @@
 class Monitor
 {
 public:
-	Monitor() 
+	inline Monitor()
 		: _cs{ 0 } {
 		InitializeCriticalSection(&_cs);
 	}
-	~Monitor() {
+	inline ~Monitor() {
 		DeleteCriticalSection(&_cs);
 	}
 
@@ -29,10 +29,10 @@ private:
 class MonitorScope
 {
 public:
-	MonitorScope(Monitor& monitor) {
+	inline MonitorScope(Monitor& monitor) {
 		_m.Enter();
 	}
-	~MonitorScope() {
+	inline ~MonitorScope() {
 		_m.Exit();
 	}
 
