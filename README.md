@@ -55,4 +55,14 @@ you need to configure the following route (CMD/cli interface).
 <br/>
    <span>&nbsp;&nbsp;&nbsp;&nbsp;1、route add 172.8.8.8 mask 255.255.255.255 10.8.0.0  (172.8.8.8 ~ 172.8.8.8)</span> <br/>
    <span>&nbsp;&nbsp;&nbsp;&nbsp;2、route add 198.18.0.0 mask 255.254.0.0 10.8.0.0  (198.18.0.0 ~ 198.19.255.255)</span> <br/>
- 
+
+Usage
+-------------------------------------------------------------------------------------
+Must run the program as Administrator
+<br/>
+Specify that the IP that the SupersocksR listens on must be an "Ethernet physical network card" (typically a RTL[Realtek] network card) that can access input or output traffic
+<br/>
+<br/>
+1：SupersocksR 192.168.0.104 7521 yy523o! 25
+<br/>
+2：SkylakeNAT --server=192.168.0.104 --port=7521 --key=yy520o! --subtract=25 --max-concurrent=8
