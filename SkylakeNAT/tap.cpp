@@ -192,68 +192,68 @@ void Tap::Close() {
 bool Tap::Output(const std::shared_ptr<ip_hdr>& packet, int size, boost::asio::io_context* context) {
 	if (NULL == packet || size <= 0 || NULL == this)
 		return false;
-
 	if (this->_disposed)
 		return false;
-
 	DWORD bytesToWrite = 0;
 	if (context) {
-		bool success = false;
-		auto overlapped = std::make_shared<OVERLAPPED>(OVERLAPPED{ 0 });
-		overlapped->hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-		auto afo = std::make_shared<boost::asio::windows::object_handle>(*context, overlapped->hEvent);
 		do {
-			success = WriteFile(_tap, packet.get(), size, &bytesToWrite, overlapped.get());
-			if (!success) {
-				if (ERROR_IO_PENDING != GetLastError())
-					break;
-				if (!afo)
-					break;
-				try {
-					afo->async_wait([packet, afo](const boost::system::error_code& err) {
-						afo->close();
-					});
-					success = true;
-				}
-				catch (std::exception&) {
-					break;
-				}
-			}
-		} while (0);
-		if (!success)
-			if (afo)
-				afo->close();
-		return success;
-	}
-	else {
-		MonitorScope scope(_outsyncobj);
-		do {
-			OVERLAPPED overlapped{ 0 };
-			overlapped.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 			bool success = false;
+			auto overlapped = std::make_shared<OVERLAPPED>(OVERLAPPED{ 0 });
+			overlapped->hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+			auto afo = std::make_shared<boost::asio::windows::object_handle>(*context, overlapped->hEvent);
 			do {
-				if (!WriteFile(_tap, packet.get(), size, &bytesToWrite, &overlapped)) {
+				MonitorScope scope(_outsyncobj);
+				success = WriteFile(_tap, packet.get(), size, &bytesToWrite, overlapped.get());
+				if (!success) {
 					if (ERROR_IO_PENDING != GetLastError())
 						break;
-					if (!overlapped.hEvent) {
-						if (!GetOverlappedResult(_tap, &overlapped, &bytesToWrite, TRUE))
-							break;
+					if (!afo)
+						break;
+					try {
+						afo->async_wait([packet, afo](const boost::system::error_code& err) {
+							afo->close();
+						});
 						success = true;
 					}
-					else {
-						DWORD dw = WaitForSingleObject(overlapped.hEvent, INFINITE);
-						if (dw != WAIT_OBJECT_0)
-							break;
-						if (!GetOverlappedResult(_tap, &overlapped, &bytesToWrite, FALSE))
-							break;
-						success = true;
+					catch (std::exception&) {
+						break;
 					}
 				}
 			} while (0);
-			if (overlapped.hEvent)
-				CloseHandle(overlapped.hEvent);
+			if (!success)
+				if (afo)
+					afo->close();
 			return success;
 		} while (0);
+	}
+	else {
+		bool success = false;
+		OVERLAPPED overlapped{ 0 };
+		overlapped.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+		do {
+			MonitorScope scope(_outsyncobj);
+			success = WriteFile(_tap, packet.get(), size, &bytesToWrite, &overlapped);
+			if (!success) {
+				if (ERROR_IO_PENDING != GetLastError())
+					break;
+				if (!overlapped.hEvent) {
+					if (!GetOverlappedResult(_tap, &overlapped, &bytesToWrite, TRUE))
+						break;
+					success = true;
+				}
+				else {
+					DWORD dw = WaitForSingleObject(overlapped.hEvent, INFINITE);
+					if (dw != WAIT_OBJECT_0)
+						break;
+					if (!GetOverlappedResult(_tap, &overlapped, &bytesToWrite, FALSE))
+						break;
+					success = true;
+				}
+			}
+		} while (0);
+		if (overlapped.hEvent)
+			CloseHandle(overlapped.hEvent);
+		return success;
 	}
 }
 
