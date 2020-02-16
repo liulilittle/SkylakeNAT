@@ -23,7 +23,7 @@ Build SupersocksR * (experiment)
 -------------------------------------------------------------------------------------
 Nuget
 <br/>
-References: >= Microsoft .NET Framework 4.5
+References: >= Microsoft .NET Framework 4.5、Microsoft Visual C++ 2010 x86 Runtime(CRT)
 <br/>
 1、Pcap.Net
 <br/>
