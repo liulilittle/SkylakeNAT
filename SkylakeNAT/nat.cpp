@@ -222,7 +222,13 @@ bool NAT::PublicInput(const std::shared_ptr<ip_hdr>& packet, int size) {
 	bool success = false;
 	if (!packet.get() || size <= 0)
 		return success;
-	success = _tap->Output(packet, size, &_context);
+	do {
+#ifdef _NOT_USE_ASIO_WRITE_TAP_PACKET
+		success = _tap->Output(packet, size, NULL);
+#else
+		success = _tap->Output(packet, size, &_context);
+#endif
+	} while (0);
 	PrintTraceEthernetInput(packet, 1, success);
 	return success;
 }

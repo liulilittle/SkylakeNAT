@@ -84,5 +84,8 @@
     <ClInclude Include="rc4.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="monitor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

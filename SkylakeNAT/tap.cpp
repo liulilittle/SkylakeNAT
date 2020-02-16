@@ -10,9 +10,9 @@
 #include <sstream>
 #include <exception>
 
+#include "env.h"
 #include "tap.h"
 #include "tap-windows.h"
-#include "env.h"
 
 #define 	M_DEBUG_LEVEL   (0x0F) /* debug level mask */
 #define 	M_FATAL   (1<<4) /* exit program */
@@ -226,15 +226,35 @@ bool Tap::Output(const std::shared_ptr<ip_hdr>& packet, int size, boost::asio::i
 		return success;
 	}
 	else {
-		OVERLAPPED overlapped{ 0 };
-		if (!WriteFile(_tap, packet.get(), size, &bytesToWrite, &overlapped)) {
-			if (ERROR_IO_PENDING != GetLastError())
-				return false;
-			if (!GetOverlappedResult(_tap, &overlapped, &bytesToWrite, TRUE))
-				return false;
-		}
+		MonitorScope scope(_outsyncobj);
+		do {
+			OVERLAPPED overlapped{ 0 };
+			overlapped.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+			bool success = false;
+			do {
+				if (!WriteFile(_tap, packet.get(), size, &bytesToWrite, &overlapped)) {
+					if (ERROR_IO_PENDING != GetLastError())
+						break;
+					if (!overlapped.hEvent) {
+						if (!GetOverlappedResult(_tap, &overlapped, &bytesToWrite, TRUE))
+							break;
+						success = true;
+					}
+					else {
+						DWORD dw = WaitForSingleObject(overlapped.hEvent, INFINITE);
+						if (dw != WAIT_OBJECT_0)
+							break;
+						if (!GetOverlappedResult(_tap, &overlapped, &bytesToWrite, FALSE))
+							break;
+						success = true;
+					}
+				}
+			} while (0);
+			if (overlapped.hEvent)
+				CloseHandle(overlapped.hEvent);
+			return success;
+		} while (0);
 	}
-	return true;
 }
 
 std::shared_ptr<Tap::NetworkInterface>& Tap::GetNetworkInterface() {

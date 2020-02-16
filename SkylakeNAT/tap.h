@@ -9,6 +9,8 @@
 #include <boost/asio.hpp>
 
 #include "ip.h"
+#include "env.h"
+#include "monitor.h"
 
 class Tap
 {
@@ -70,4 +72,5 @@ private:
 	void*																				_tap;
 	std::shared_ptr<NetworkInterface>													_interfaces;
 	int																					_pullUp;
+	Monitor																				_outsyncobj;
 };

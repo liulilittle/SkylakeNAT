@@ -8,23 +8,6 @@
 #include <sstream>
 #include <iostream>
 
-class CriticalScope
-{
-public:
-	CriticalScope(std::mutex& m)
-		: _m(m)
-	{
-		_m.lock();
-	}
-	~CriticalScope()
-	{
-		_m.unlock();
-	}
-
-private:
-	std::mutex&					_m;
-};
-
 Encryptor::Encryptor(const std::string method, const std::string password)
 	: _cipher(NULL)
 	, _method(method)
@@ -70,7 +53,7 @@ std::shared_ptr<unsigned char> Encryptor::Encrypt(unsigned char* data, int datal
 		return NULL;
 	}
 
-	CriticalScope scope(_syncobj);
+	MonitorScope scope(_syncobj);
 	// ENCR-DATA
 	int outLen = datalen + _cipher->block_size;
 	std::shared_ptr<unsigned char> cipherText = New(outLen);
@@ -99,7 +82,7 @@ std::shared_ptr<unsigned char> Encryptor::Decrypt(unsigned char* data, int datal
 		return NULL;
 	}
 
-	CriticalScope scope(_syncobj);
+	MonitorScope scope(_syncobj);
 	// DECR-DATA
 	int outLen = datalen + _cipher->block_size;
 	std::shared_ptr<unsigned char> cipherText = New(outLen);

@@ -10,6 +10,9 @@
 #include <openssl/crypto.h>
 #include <openssl/err.h>
 
+#include "env.h"
+#include "monitor.h"
+
 static const char* ENCRYPTOR_AES_256_CFB = "aes-256-cfb";
 static const char* ENCRYPTOR_AES_192_CFB = "aes-192-cfb";
 static const char* ENCRYPTOR_AES_128_CFB = "aes-128-cfb";
@@ -45,5 +48,5 @@ private:
 	std::string											_password;
 	std::shared_ptr<EVP_CIPHER_CTX>						_encryptCTX;
 	std::shared_ptr<EVP_CIPHER_CTX>						_decryptCTX;
-	std::mutex											_syncobj;
+	Monitor												_syncobj;
 };
