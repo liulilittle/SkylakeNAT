@@ -12,7 +12,6 @@
     using System.Net.Sockets;
     using System.Reflection;
     using System.Runtime.InteropServices;
-    using System.Text;
 #if !NO_USAGE_PCAP_NET
     using PcapDotNet.Core;
     using PcapDotNet.Packets;
@@ -494,8 +493,7 @@
             int packet_size = ip.Length;
             if (packet_size > 0)
             {
-                IPFrame frame = IPv4Layer.ParseFrame(new
-                    BufferSegment(packet_data, packet_offset, packet_size), false);
+                IPFrame frame = IPv4Layer.ParseFrame(new BufferSegment(packet_data, packet_offset, packet_size), true);
                 if (frame != null)
                 {
                     frame.SourceMacAddress = datagram.Source;
@@ -572,7 +570,7 @@
                         continue;
                     }
 
-                    IPFrame frame = IPv4Layer.ParseFrame(new BufferSegment(this.m_buffer, 0, packet_size), false);
+                    IPFrame frame = IPv4Layer.ParseFrame(new BufferSegment(this.m_buffer, 0, packet_size), true);
                     if (frame != null)
                     {
                         this.OnSniffer(frame);

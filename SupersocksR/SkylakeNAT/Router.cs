@@ -8,6 +8,7 @@
     using System.Runtime.InteropServices;
     using SupersocksR.Core;
     using SupersocksR.Net.IP;
+    using SupersocksR.Net.Tools;
     using SupersocksR.Net.Tun;
     using Ethernet = SupersocksR.Net.Ethernet;
     using NAT = SupersocksR.Net.NAT;
@@ -410,6 +411,10 @@
         private readonly ConcurrentDictionary<IPAddress, LinkedList<SkylakeNATClient>> _sockets
             = new ConcurrentDictionary<IPAddress, LinkedList<SkylakeNATClient>>();
         private readonly ConcurrentDictionary<int, IPAddress> _addressAllocation = new ConcurrentDictionary<int, IPAddress>();
+        private readonly HashSet<IPAddress> _assignedAddresses = new HashSet<IPAddress>();
+        private readonly IPAddress _dhcpServerAddress = IPAddress.Parse("10.8.0.1");
+        private readonly IPAddress _dnsServerAddress = IPAddress.Parse("8.8.8.8");
+        private readonly IPAddressRange _dhcpAddressAllocationRange = IPAddressRange.Parse("10.8.0.2-10.8.255.254");
 
         public Ethernet Ethernet { get; }
 
@@ -469,6 +474,14 @@
                             if (deleteCompletely)
                             {
                                 _sockets.TryRemove(socket.Address, out s);
+                                lock (_addressAllocation)
+                                {
+                                    _addressAllocation.TryRemove(socket.Id, out IPAddress address_x);
+                                    if (socket.Address != null)
+                                        _assignedAddresses.Remove(socket.Address);
+                                    else if (address_x != null)
+                                        _assignedAddresses.Remove(address_x);
+                                }
                             }
                         }
                         this.ProcessAbort(socket);
@@ -538,23 +551,66 @@
             public Dhcp dhcp;
         }
 
+        protected virtual IPAddress AddressAllocation(int id)
+        {
+            if (0 == id)
+            {
+                return null;
+            }
+            lock (_addressAllocation)
+            {
+                if (_addressAllocation.TryGetValue(id, out IPAddress address) && address != null)
+                {
+                    return address;
+                }
+                foreach (IPAddress i in _dhcpAddressAllocationRange.AsEnumerable())
+                {
+                    if (i == null)
+                    {
+                        continue;
+                    }
+                    fixed (byte* p = i.GetAddressBytes())
+                    {
+                        byte l = p[3];
+                        if (l <= 1 || l >= 255)
+                        {
+                            continue;
+                        }
+                    }
+                    if (_assignedAddresses.Contains(i))
+                    {
+                        continue;
+                    }
+                    _addressAllocation[id] = i;
+                    _assignedAddresses.Add(i);
+                    return i;
+                }
+            }
+            return null;
+        }
+
         protected virtual void ProcessAuthentication(SkylakeNATClient socket)
         {
-            if (this.ResponseAuthentication(socket,
-                IPAddress.Parse("10.8.3.7"),
-                IPAddress.Parse("10.8.0.1"), IPAddress.Parse("8.8.8.8")))
+            IPAddress localIP = this.AddressAllocation(socket.Id);
+            if (localIP == null)
             {
-                lock (this._sockets)
+                socket.Close();
+            }
+            else
+            {
+                if (this.ResponseAuthentication(socket, localIP, this._dhcpServerAddress, this._dnsServerAddress))
                 {
-                    if (_sockets.TryGetValue(socket.Address,
-                        out LinkedList<SkylakeNATClient> s) || s == null)
+                    lock (this._sockets)
                     {
-                        _sockets[socket.Address] =
+                        if (_sockets.TryGetValue(socket.Address, out LinkedList<SkylakeNATClient> s) || s == null)
+                        {
                             s = new LinkedList<SkylakeNATClient>();
-                    }
-                    if (s != null)
-                    {
-                        socket._rsv_current = s.AddLast(socket);
+                            _sockets[socket.Address] = s;
+                        }
+                        if (s != null)
+                        {
+                            socket._rsv_current = s.AddLast(socket);
+                        }
                     }
                 }
             }
@@ -563,18 +619,38 @@
         protected virtual bool CloseManyClient(IPAddress address)
         {
             if (address == null)
+            {
                 return false;
+            }
             lock (this._sockets)
             {
                 _sockets.TryRemove(address, out LinkedList<SkylakeNATClient> s);
                 if (s == null)
+                {
                     return false;
+                }
                 var node = s.First;
+                SkylakeNATClient socket = null;
                 while (node != null)
                 {
                     var i = node.Value;
-                    i?.Close();
+                    if (i != null)
+                    {
+                        socket = i;
+                        i.Close();
+                    }
                     node = node.Next;
+                }
+                if (socket != null)
+                {
+                    lock (_addressAllocation)
+                    {
+                        _addressAllocation.TryRemove(socket.Id, out IPAddress address_x);
+                        if (socket.Address != null)
+                            _assignedAddresses.Remove(socket.Address);
+                        else if (address_x != null)
+                            _assignedAddresses.Remove(address_x);
+                    }
                 }
                 return true;
             }
