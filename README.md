@@ -66,3 +66,5 @@ Specify that the IP that the SupersocksR listens on must be an "Ethernet physica
 1：SupersocksR 192.168.0.104 7521 yy523o! 25
 <br/>
 2：SkylakeNAT --server=192.168.0.104 --port=7521 --key=yy520o! --subtract=25 --max-concurrent=8
+
+<img src="https://img-blog.csdnimg.cn/20200216234706449.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2xpdWxpbGl0dGxl,size_16,color_FFFFFF,t_70"></img>
