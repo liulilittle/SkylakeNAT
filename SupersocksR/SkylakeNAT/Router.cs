@@ -13,7 +13,6 @@
     using SupersocksR.Net.Tun;
     using Ethernet = SupersocksR.Net.Ethernet;
     using NAT = SupersocksR.Net.NAT;
-    using Thread = System.Threading.Thread;
     using Timer = System.Timers.Timer;
 
     public unsafe class Router : IDisposable
@@ -268,11 +267,13 @@
                 bool events = false;
                 lock (this._syncobj)
                 {
+#if !__USE_UDP_PAYLOAD_TAP_PACKET
                     if (Shutdown(this._socket))
                     {
                         events = true;
                         this._socket = null;
                     }
+#endif
                     this._message = null;
                     this._phdr = null;
                     this._fseek = 0;
@@ -594,7 +595,28 @@
                     }
                     if (freely)
                     {
-                        _natClientTable.TryRemove(kv.Key, out NATClientContext context_xx);
+                        lock (this._sockets)
+                        {
+                            SkylakeNATClient clients = context.client;
+                            if (clients != null)
+                            {
+                                IPAddress address = IPAddress.Any;
+                                lock (_addressAllocation)
+                                {
+                                    _addressAllocation.TryRemove(clients.Id, out address);
+                                    if (address == null)
+                                    {
+                                        address = clients.Address;
+                                    }
+                                    if (address != null && !Ethernet.Equals(address, IPAddress.Any))
+                                    {
+                                        _assignedAddresses.Remove(address);
+                                        _sockets.TryRemove(address, out LinkedList<SkylakeNATClient> linkedlist_xx);
+                                    }
+                                }
+                            }
+                            _natClientTable.TryRemove(kv.Key, out NATClientContext context_xx);
+                        }
                     }
                 }
             };
@@ -850,7 +872,7 @@
                         this._server.Listen(backlog);
                         this.StartAccept(null);
 #else
-                        this.ProcessReceive(null);
+                        this.ProcessReceiveFromUdp(null);
 #endif
                     }
                     catch (Exception e)
@@ -867,7 +889,7 @@
         }
 
 #if __USE_UDP_PAYLOAD_TAP_PACKET
-        private void ProcessReceive(IAsyncResult ar)
+        private void ProcessReceiveFromUdp(IAsyncResult ar)
         {
             lock (this._syncobj)
             {
@@ -878,7 +900,7 @@
                     if (ar == null)
                     {
                         EndPoint remoteEP = this._server.LocalEndPoint;
-                        this._server.BeginReceiveFrom(_mssPacketBuffer, 0, _mssPacketBuffer.Length, 0, ref remoteEP, ProcessReceive, null);
+                        this._server.BeginReceiveFrom(_mssPacketBuffer, 0, _mssPacketBuffer.Length, 0, ref remoteEP, ProcessReceiveFromUdp, null);
                     }
                     else
                     {
@@ -909,6 +931,7 @@
                                             client = this.CreateClient(pkg->id, remoteEP);
                                             if (client != null)
                                             {
+                                                client.LocalEndPoint = remoteEP;
                                                 context = new NATClientContext()
                                                 {
                                                     client = client
@@ -973,12 +996,12 @@
                                 }
                             }
                         } while (false);
-                        this.ProcessReceive(null);
+                        this.ProcessReceiveFromUdp(null);
                     }
                 }
                 catch (Exception)
                 {
-                    this.ProcessReceive(null);
+                    this.ProcessReceiveFromUdp(null);
                 }
             }
         }
