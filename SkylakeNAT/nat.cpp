@@ -17,20 +17,6 @@ enum NATCommands
 	NATCommands_kEthernetOutput,
 };
 
-#pragma pack(push, 1)
-struct NATAuthenticationResponse
-{
-public:
-	struct Dhcp
-	{
-	public:
-		uint32_t						local;
-		uint32_t						dhcp;
-		uint32_t						dns;
-	} dhcp;
-};
-#pragma pack(pop)
-
 NAT::NAT(const std::shared_ptr<Tap::NetworkInterface>& interfaces, int id, std::string server, int port, int maxconcurrent, const std::string& key, int subtract)
 	: enable_shared_from_this()
 	, Id(id)
@@ -105,7 +91,21 @@ void NAT::DoEvents() {
 	auto self = shared_from_this();
 	if (self->_disposed)
 		return;
-	long double ticks = (long double)GetTickCount(true);
+    long double ticks = (long double)GetTickCount(true);
+#ifdef __USE_UDP_PAYLOAD_TAP_PACKET
+    if (((ticks - self->_ticks) / 1000) >= 500) {
+        self->_ticks = (unsigned long long)ticks;
+        self->_syncobj.lock();
+        {
+            unsigned int* availableconcurrent = (unsigned int*)&self->_availableconcurrent;
+            if (0 == InterlockedCompareExchange(availableconcurrent, 0, 0)) {
+                CreateSocketChannel();
+            }
+        }
+        self->_syncobj.unlock();
+        self->OnOpen(self->NextAvailableChannel());
+    }
+#else
 	if (((ticks - self->_ticks) / 1000) >= 10000) {
 		self->_ticks = (unsigned long long)ticks;
 		int concurrent = 0;
@@ -115,74 +115,82 @@ void NAT::DoEvents() {
 			concurrent = (int)InterlockedCompareExchange(availableconcurrent, 0, 0);
 		}
 		self->_syncobj.unlock();
-		for (; concurrent < self->_maxconcurrent; concurrent++) {
-			std::thread([](std::shared_ptr<NAT> self) {
-				std::shared_ptr<Socket> socket = std::make_shared<Socket>(
-					self->_context,
-					self->Id,
-					self->_server,
-					self->_port,
-					self->_key,
-					self->_subtract);
-				socket->AbortEvent = [self](const std::shared_ptr<Socket>& sender) {
-					if (sender) {
-						sender->Close();
-						self->_syncobj.lock();
-						{
-							auto availableconcurrent = (unsigned int*)&self->_availableconcurrent;
-							if (InterlockedCompareExchange(availableconcurrent, 0, 0) > 0) {
-								if (0 == InterlockedDecrement((unsigned int*)&self->_availableconcurrent))
-									self->OnAbort();
-							}
-							auto i = self->_sockets.find(sender.get());
-							if (i != self->_sockets.end()) {
-								if (i == self->_currentsocket)
-									++self->_currentsocket;
-								self->_sockets.erase(i);
-							}
-						}
-						self->_syncobj.unlock();
-					}
-				};
-				socket->MessageEvent = [self](const std::shared_ptr<Socket>& sender,
-					unsigned short commands,
-					std::shared_ptr<unsigned char>& message, int message_size) {
-					self->OnMessage(commands, message, message_size);
-				};
-				if (!socket->TryOpen(5000)) {
-					socket->Close();
-					socket.reset();
-				}
-				else {
-					self->_syncobj.lock();
-					{
-						Socket* key = NULL;
-						if (self->_currentsocket != self->_sockets.end())
-							key = self->_currentsocket->first;
-						self->_sockets[socket.get()] = socket;
-						if (!key)
-							self->_currentsocket = self->_sockets.end();
-						else
-							self->_currentsocket = self->_sockets.find(key);
-						InterlockedIncrement((unsigned int*)&self->_availableconcurrent);
-					}
-					self->_syncobj.unlock();
-					self->OnOpen(socket);
-					while (1) {
-						int size = 0;
-						unsigned short commands = 0;
-						auto packet = socket->ReadPacket(commands, size);
-						if (size < 0)
-							break;
-						self->OnMessage(commands, packet, size);
-					}
-				}
-			}, self).detach();
-		}
+        for (; concurrent < self->_maxconcurrent; concurrent++) {
+            CreateSocketChannel();
+        }
 	}
+#endif
+}
+
+void NAT::CreateSocketChannel() {
+    auto self = shared_from_this();
+    std::thread([](std::shared_ptr<NAT> self) {
+        std::shared_ptr<Socket> socket = std::make_shared<Socket>(
+            self->_context,
+            self->Id,
+            self->_server,
+            self->_port,
+            self->_key,
+            self->_subtract);
+        socket->AbortEvent = [self](const std::shared_ptr<Socket>& sender) {
+            if (sender) {
+                sender->Close();
+                self->_syncobj.lock();
+                {
+                    auto availableconcurrent = (unsigned int*)&self->_availableconcurrent;
+                    if (InterlockedCompareExchange(availableconcurrent, 0, 0) > 0) {
+                        if (0 == InterlockedDecrement((unsigned int*)&self->_availableconcurrent))
+                            self->OnAbort();
+                    }
+                    auto i = self->_sockets.find(sender.get());
+                    if (i != self->_sockets.end()) {
+                        if (i == self->_currentsocket)
+                            ++self->_currentsocket;
+                        self->_sockets.erase(i);
+                    }
+                }
+                self->_syncobj.unlock();
+            }
+        };
+        socket->MessageEvent = [self](const std::shared_ptr<Socket>& sender,
+            unsigned short commands,
+            std::shared_ptr<unsigned char>& message, int message_size) {
+            self->OnMessage(commands, message, message_size);
+        };
+        if (!socket->TryOpen(5000)) {
+            socket->Close();
+            socket.reset();
+        }
+        else {
+            self->_syncobj.lock();
+            {
+                Socket* key = NULL;
+                if (self->_currentsocket != self->_sockets.end())
+                    key = self->_currentsocket->first;
+                self->_sockets[socket.get()] = socket;
+                if (!key)
+                    self->_currentsocket = self->_sockets.end();
+                else
+                    self->_currentsocket = self->_sockets.find(key);
+                InterlockedIncrement((unsigned int*)&self->_availableconcurrent);
+            }
+            self->_syncobj.unlock();
+            self->OnOpen(socket);
+            while (1) {
+                int size = 0;
+                unsigned short commands = 0;
+                auto packet = socket->ReadPacket(commands, size);
+                if (size < 0)
+                    break;
+                self->OnMessage(commands, packet, size);
+            }
+        }
+    }, self).detach();
 }
 
 void NAT::OnOpen(const std::shared_ptr<Socket>& socket) {
+    if (!socket.get())
+        return;
 	socket->Send(NATCommands_kAuthentication, NULL, 0);
 }
 
@@ -202,16 +210,19 @@ void NAT::OnMessage(unsigned short commands, std::shared_ptr<unsigned char>& mes
 			}
 		}
 	}
-	else if (commands == NATCommands_kAuthentication) {
-		NATAuthenticationResponse* response = (NATAuthenticationResponse*)message.get();
-		if (response && message_size >= sizeof(NATAuthenticationResponse)) {
-			_tap->Dhcp(response->dhcp.dhcp, response->dhcp.local, response->dhcp.dns);
-			PrintTraceToScreen("DHCP local[%s] dns[%s] from dhcp[%s]",
-				GetAddressText(response->dhcp.local).data(),
-				GetAddressText(response->dhcp.dns).data(),
-				GetAddressText(response->dhcp.dhcp).data());
-		}
-	}
+    else if (commands == NATCommands_kAuthentication) {
+        NATAuthenticationResponse* response = (NATAuthenticationResponse*)message.get();
+        if (response && message_size >= sizeof(NATAuthenticationResponse)) {
+            PrintTraceToScreen("DHCP local[%s] dns[%s] from dhcp[%s]",
+                GetAddressText(response->dhcp.local).data(),
+                GetAddressText(response->dhcp.dns).data(),
+                GetAddressText(response->dhcp.dhcp).data());
+            if (0 != memcmp(response, &_dhcp, sizeof(_dhcp))) {
+                memcpy(&_dhcp, response, sizeof(_dhcp));
+                _tap->Dhcp(response->dhcp.dhcp, response->dhcp.local, response->dhcp.dns);
+            }
+        }
+    }
 }
 
 void NAT::OnAbort() {

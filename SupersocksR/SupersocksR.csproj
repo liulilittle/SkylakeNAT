@@ -34,7 +34,7 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>TRACE;DEBUG;_NO_USAGE_PCAP_NET;_USE_RC4_SIMPLE_ENCIPHER</DefineConstants>
+    <DefineConstants>TRACE;DEBUG;_NO_USAGE_PCAP_NET;_USE_RC4_SIMPLE_ENCIPHER;__USE_UDP_PAYLOAD_TAP_PACKET</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <Prefer32Bit>false</Prefer32Bit>

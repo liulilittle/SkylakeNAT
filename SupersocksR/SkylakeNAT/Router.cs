@@ -3,6 +3,7 @@
     using System;
     using System.Collections.Concurrent;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Net;
     using System.Net.Sockets;
     using System.Runtime.InteropServices;
@@ -12,6 +13,8 @@
     using SupersocksR.Net.Tun;
     using Ethernet = SupersocksR.Net.Ethernet;
     using NAT = SupersocksR.Net.NAT;
+    using Thread = System.Threading.Thread;
+    using Timer = System.Timers.Timer;
 
     public unsafe class Router : IDisposable
     {
@@ -52,8 +55,8 @@
             private bool _fhdr = false;
             private byte[] _message = null;
             internal LinkedListNode<SkylakeNATClient> _rsv_current = null;
-#if !_USE_RC4_SIMPLE_ENCIPHER
-            private readonly Encryptor _encryptor;
+#if !_USE_RC4_SIMPLE_ENCIPHER || __USE_UDP_PAYLOAD_TAP_PACKET
+            internal readonly Encryptor _encryptor;
 #endif
             public event EventHandler Abort;
             public event EventHandler<SkylakeNATMessage> Message;
@@ -65,12 +68,24 @@
 
             public IPAddress Address { get; set; }
 
+#if _USE_RC4_SIMPLE_ENCIPHER
+            public EndPoint LocalEndPoint { get; internal set; }
+#endif
+
+#if !__USE_UDP_PAYLOAD_TAP_PACKET
             public SkylakeNATClient(Router nat, Socket socket)
+#else
+            public SkylakeNATClient(Router nat, Socket socket, int localId, EndPoint localEP)
+#endif
             {
                 this.Router = nat ?? throw new ArgumentNullException("You provide a null references to SkylakeNAT which is not permitted");
                 this._socket = socket ?? throw new ArgumentNullException("You provide a null references to Socket which is not permitted");
-#if !_USE_RC4_SIMPLE_ENCIPHER
+#if !_USE_RC4_SIMPLE_ENCIPHER || __USE_UDP_PAYLOAD_TAP_PACKET
                 this._encryptor = new Encryptor(Encryptor.EncryptionNames[0], $"{nat.Key}{nat.Subtract}");
+#endif
+#if __USE_UDP_PAYLOAD_TAP_PACKET
+                this.Id = localId;
+                this.LocalEndPoint = localEP;
 #endif
             }
 
@@ -269,17 +284,17 @@
                 }
             }
 
-            protected virtual void OnAuthentication(EventArgs e)
+            protected internal virtual void OnAuthentication(EventArgs e)
             {
                 this.Authentication?.Invoke(this, e);
             }
 
-            protected virtual void OnAbort(EventArgs e)
+            protected internal virtual void OnAbort(EventArgs e)
             {
                 this.Abort?.Invoke(this, e);
             }
 
-            protected virtual void OnMessage(SkylakeNATMessage e)
+            protected internal virtual void OnMessage(SkylakeNATMessage e)
             {
                 this.Message?.Invoke(this, e);
             }
@@ -300,7 +315,7 @@
                     }
                 }
                 BufferSegment payload_segment = message.Payload;
-#if !_USE_RC4_SIMPLE_ENCIPHER
+#if !_USE_RC4_SIMPLE_ENCIPHER || __USE_UDP_PAYLOAD_TAP_PACKET
                 if (payload_segment.Length > 0)
                     payload_segment = this._encryptor.Encrypt(payload_segment);
 #endif
@@ -321,6 +336,24 @@
 #endif
                     }
                 }
+#if _USE_RC4_SIMPLE_ENCIPHER
+                try
+                {
+                    socket.BeginSendTo(packet, 0, packet.Length, SocketFlags.None, this.LocalEndPoint, (ar) =>
+                    {
+                        try
+                        {
+                            socket.EndSendTo(ar);
+                        }
+                        catch (Exception) { }
+                    }, null);
+                    return true;
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
+#else
                 SocketError error = SocketError.SocketError;
                 try
                 {
@@ -351,6 +384,7 @@
                     return false;
                 }
                 return true;
+#endif
             }
 
             public virtual void Dispose()
@@ -361,7 +395,9 @@
                     this._fseek = 0;
                     this._fhdr = false;
                     this._message = null;
+#if !_USE_RC4_SIMPLE_ENCIPHER
                     Shutdown(_socket);
+#endif
                     this._socket = null;
                     lock (this.Router._sockets)
                     {
@@ -415,6 +451,16 @@
         private readonly IPAddress _dhcpServerAddress = IPAddress.Parse("10.8.0.1");
         private readonly IPAddress _dnsServerAddress = IPAddress.Parse("8.8.8.8");
         private readonly IPAddressRange _dhcpAddressAllocationRange = IPAddressRange.Parse("10.8.0.2-10.8.255.254");
+#if __USE_UDP_PAYLOAD_TAP_PACKET
+        private class NATClientContext
+        {
+            public SkylakeNATClient client = null;
+            public Stopwatch agingsw = new Stopwatch();
+        }
+        private Timer _doAgingswNatClientContextTimer;
+        private readonly byte[] _mssPacketBuffer = new byte[4 * Layer3Netif.MTU];
+        private readonly ConcurrentDictionary<int, NATClientContext> _natClientTable = new ConcurrentDictionary<int, NATClientContext>();
+#endif
 
         public Ethernet Ethernet { get; }
 
@@ -433,9 +479,14 @@
             this.Port = port;
             this.Key = key;
             this.Subtract = subtract;
+#if !__USE_UDP_PAYLOAD_TAP_PACKET
             this._server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             this._server.NoDelay = true;
             this._server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+#else
+            this._server = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            this._server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+#endif
             this._server.Bind(new IPEndPoint(ethernet, port));
             this._onSocketAbort = (sender, e) =>
             {
@@ -513,6 +564,43 @@
             this.NAT.PublicOutput += (sender, e) => this.Ethernet.Output(e);
             this.NAT.PrivateOutput += (seder, e) => this.PrivateOutput(e);
             this.Ethernet.PublicInput += (sender, e) => this.NAT.PublicInput(e);
+#if __USE_UDP_PAYLOAD_TAP_PACKET
+            this._doAgingswNatClientContextTimer = new Timer();
+            this._doAgingswNatClientContextTimer.Elapsed += (sender, e) =>
+            {
+                foreach (var kv in _natClientTable)
+                {
+                    bool freely = false;
+                    var context = kv.Value;
+                    if (context == null)
+                    {
+                        freely = true;
+                    }
+                    else
+                    {
+                        SkylakeNATClient clients = null;
+                        lock (context)
+                        {
+                            if (context.agingsw.ElapsedMilliseconds >= 10000)
+                            {
+                                freely = true;
+                                clients = context.client;
+                            }
+                        }
+                        if (clients != null)
+                        {
+                            clients.OnAbort(EventArgs.Empty);
+                        }
+                    }
+                    if (freely)
+                    {
+                        _natClientTable.TryRemove(kv.Key, out NATClientContext context_xx);
+                    }
+                }
+            };
+            this._doAgingswNatClientContextTimer.Interval = 500;
+            this._doAgingswNatClientContextTimer.Start();
+#endif
         }
 
         protected virtual SkylakeNATClient GetClient(IPAddress address, out int sessions)
@@ -602,17 +690,25 @@
                 {
                     lock (this._sockets)
                     {
-                        if (_sockets.TryGetValue(socket.Address, out LinkedList<SkylakeNATClient> s) || s == null)
+                        if (!_sockets.TryGetValue(socket.Address, out LinkedList<SkylakeNATClient> s) || s == null)
                         {
                             s = new LinkedList<SkylakeNATClient>();
                             _sockets[socket.Address] = s;
+#if __USE_UDP_PAYLOAD_TAP_PACKET
+                            s.AddLast(socket);
+#endif
                         }
+#if !__USE_UDP_PAYLOAD_TAP_PACKET
                         if (s != null)
                         {
                             socket._rsv_current = s.AddLast(socket);
                         }
+#endif
                     }
                 }
+#if __USE_UDP_PAYLOAD_TAP_PACKET
+                Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}] {socket.Id} {socket.Address} {socket.LocalEndPoint}");
+#endif
             }
         }
 
@@ -750,8 +846,12 @@
                     }
                     try
                     {
+#if !__USE_UDP_PAYLOAD_TAP_PACKET
                         this._server.Listen(backlog);
                         this.StartAccept(null);
+#else
+                        this.ProcessReceive(null);
+#endif
                     }
                     catch (Exception e)
                     {
@@ -766,6 +866,125 @@
             this.Ethernet.Listen();
         }
 
+#if __USE_UDP_PAYLOAD_TAP_PACKET
+        private void ProcessReceive(IAsyncResult ar)
+        {
+            lock (this._syncobj)
+            {
+                try
+                {
+                    if (this._disposed)
+                        return;
+                    if (ar == null)
+                    {
+                        EndPoint remoteEP = this._server.LocalEndPoint;
+                        this._server.BeginReceiveFrom(_mssPacketBuffer, 0, _mssPacketBuffer.Length, 0, ref remoteEP, ProcessReceive, null);
+                    }
+                    else
+                    {
+                        EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+                        int bytes = this._server.EndReceiveFrom(ar, ref remoteEP);
+                        do
+                        {
+                            if (bytes < sizeof(pkg_hdr))
+                                break;
+                            fixed (byte* pinned = _mssPacketBuffer)
+                            {
+                                pkg_hdr* pkg = (pkg_hdr*)pinned;
+                                if (pkg->fk != pkg_hdr.FK)
+                                    break;
+                                if ((pkg->len + sizeof(pkg_hdr)) != bytes)
+                                    break;
+                                if (pkg->id == 0)
+                                    break;
+                                Commands commands = unchecked((Commands)pkg->cmd);
+                                if (commands == Commands.NATCommands_kAuthentication)
+                                {
+                                    NATClientContext context = null;
+                                    SkylakeNATClient client = null;
+                                    lock (this._sockets)
+                                    {
+                                        if (!_natClientTable.TryGetValue(pkg->id, out context) || context == null)
+                                        {
+                                            client = this.CreateClient(pkg->id, remoteEP);
+                                            if (client != null)
+                                            {
+                                                context = new NATClientContext()
+                                                {
+                                                    client = client
+                                                };
+                                                _natClientTable[pkg->id] = context;
+                                                client.Abort += this._onSocketAbort;
+                                                client.Message += this._onSocketMessage;
+                                                client.Authentication += this._onAuthentication;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            client = context.client;
+                                        }
+                                    }
+                                    if (context != null && client != null)
+                                    {
+                                        lock (context)
+                                        {
+                                            context.agingsw.Restart();
+                                        }
+                                        client.LocalEndPoint = remoteEP;
+                                        client.OnAuthentication(EventArgs.Empty);
+                                    }
+                                }
+                                else
+                                {
+                                    SkylakeNATClient client = null;
+                                    lock (this._sockets)
+                                    {
+                                        _natClientTable.TryGetValue(pkg->id, out NATClientContext context);
+                                        if (context != null)
+                                        {
+                                            lock (context)
+                                            {
+                                                context.agingsw.Restart();
+                                            }
+                                            client = context.client;
+                                        }
+                                    }
+                                    if (client != null)
+                                    {
+                                        BufferSegment payload = null;
+                                        if (pkg->len > 0)
+                                        {
+                                            int ofs = sizeof(pkg_hdr);
+#if _USE_RC4_SIMPLE_ENCIPHER
+                                            fixed (byte* payloadPtr = &_mssPacketBuffer[ofs])
+                                                RC4.rc4_crypt(this.Key, payloadPtr, pkg->len, this.Subtract, 0);
+#endif
+                                            payload = client._encryptor.Decrypt(new BufferSegment(_mssPacketBuffer, ofs, pkg->len));
+                                        }
+                                        else
+                                        {
+                                            payload = new BufferSegment(BufferSegment.Empty);
+                                        }
+                                        client.OnMessage(new SkylakeNATMessage(payload)
+                                        {
+                                            Commands = commands,
+                                        });
+                                    }
+                                }
+                            }
+                        } while (false);
+                        this.ProcessReceive(null);
+                    }
+                }
+                catch (Exception)
+                {
+                    this.ProcessReceive(null);
+                }
+            }
+        }
+#endif
+
+#if !__USE_UDP_PAYLOAD_TAP_PACKET
         private void StartAccept(IAsyncResult ar)
         {
             lock (this._syncobj)
@@ -807,6 +1026,7 @@
                 }
             }
         }
+#endif
 
         private void CloseOrAbort(bool aborting)
         {
@@ -834,12 +1054,21 @@
 
         }
 
+#if !__USE_UDP_PAYLOAD_TAP_PACKET
         protected virtual SkylakeNATClient CreateClient(Socket socket)
         {
             if (socket == null)
                 return null;
             return new SkylakeNATClient(this, socket);
         }
+#else
+        protected virtual SkylakeNATClient CreateClient(int localId, EndPoint localIP)
+        {
+            if (0 == localId)
+                return null;
+            return new SkylakeNATClient(this, this._server, localId, localIP);
+        }
+#endif
 
         public virtual void Dispose()
         {
@@ -850,6 +1079,24 @@
                     this.Close();
                     this.Ethernet.Dispose();
                     this._disposed = true;
+#if __USE_UDP_PAYLOAD_TAP_PACKET
+                    if (this._doAgingswNatClientContextTimer != null)
+                    {
+                        this._doAgingswNatClientContextTimer.Close();
+                        this._doAgingswNatClientContextTimer.Dispose();
+                        this._doAgingswNatClientContextTimer = null;
+                    }
+#endif
+                    lock (this._sockets)
+                    {
+                        lock (this._addressAllocation)
+                        {
+                            this._natClientTable.Clear();
+                            this._sockets.Clear();
+                            this._addressAllocation.Clear();
+                            this._assignedAddresses.Clear();
+                        }
+                    }
                 }
             }
             GC.SuppressFinalize(this);

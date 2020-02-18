@@ -24,6 +24,7 @@
         private Cipher cipher = null;
         private IntPtr encryptCTX = IntPtr.Zero;
         private IntPtr decryptCTX = IntPtr.Zero;
+        private byte[] iv = null;
         private readonly object LockObj = new object();
         private readonly static byte[] EmptyBuf = new byte[0];
 
@@ -55,20 +56,20 @@
             this.method = method;
             this.password = password;
             this.initKey(method, password);
-            this.initIV(method, password);
         }
 
         private void initCipher(ref IntPtr ctx, byte[] iv, bool isCipher)
         {
-            ctx = Native.OPENSSL_malloc(Marshal.SizeOf(typeof(CipherContext.EVP_CIPHER_CTX)));
             int enc = isCipher ? 1 : 0;
-            Native.EVP_CIPHER_CTX_init(ctx);
-            Native.ExpectSuccess(Native.EVP_CipherInit_ex(
-                ctx, this.cipher.Handle, IntPtr.Zero, null, null, enc));
-            Native.ExpectSuccess(Native.EVP_CIPHER_CTX_set_key_length(ctx, key.Length));
-            Native.ExpectSuccess(Native.EVP_CIPHER_CTX_set_padding(ctx, 1));
-            Native.ExpectSuccess(Native.EVP_CipherInit_ex(
-                ctx, this.cipher.Handle, IntPtr.Zero, key, iv, enc));
+            if (ctx == IntPtr.Zero)
+            {
+                ctx = Native.OPENSSL_malloc(Marshal.SizeOf(typeof(CipherContext.EVP_CIPHER_CTX)));
+                Native.EVP_CIPHER_CTX_init(ctx);
+                Native.ExpectSuccess(Native.EVP_CipherInit_ex(ctx, this.cipher.Handle, IntPtr.Zero, null, null, enc));
+                Native.ExpectSuccess(Native.EVP_CIPHER_CTX_set_key_length(ctx, key.Length));
+                Native.ExpectSuccess(Native.EVP_CIPHER_CTX_set_padding(ctx, 1));
+            }
+            Native.ExpectSuccess(Native.EVP_CipherInit_ex(ctx, this.cipher.Handle, IntPtr.Zero, key, iv, enc));
         }
 
         private void initKey(string method, string password)
@@ -80,9 +81,24 @@
             byte[] passbuf = Encoding.Default.GetBytes(password);
             key = new byte[cipher.KeyLength];
 
-            byte[] iv = new byte[cipher.IVLength];
+            iv = new byte[cipher.IVLength];
             if (Native.EVP_BytesToKey(cipher.Handle, MessageDigest.MD5.Handle, null, passbuf, passbuf.Length, 1, key, iv) <= 0)
                 throw new ExternalException("Bytes to key calculations cannot be performed using cipher with md5(md) key password iv key etc");
+
+            int ivLen = cipher.IVLength;
+            int md5len = ivLen < sizeof(Guid) ? sizeof(Guid) : ivLen;
+            iv = new byte[ivLen]; // RAND_bytes(iv.get(), ivLen); = new byte[ivLen]; // RAND_bytes(iv.get(), ivLen);
+
+            // MD5->RC4
+            Buffer.BlockCopy(HashAlgorithm<MD5>.
+                ComputeHash(
+                    merges(
+                        Encoding.Default.GetBytes($"SkylakeNAT@{method}."),
+                        key,
+                        Encoding.Default.GetBytes($".{password}"))), 0, iv, 0, sizeof(Guid));
+            fixed (byte* piv = iv)
+            fixed (byte* pkey = key)
+                RC4.rc4_crypt(pkey, cipher.KeyLength, piv, ivLen, 0, 0);
         }
 
         private static byte[] merges(params byte[][] s)
@@ -108,28 +124,6 @@
             return r;
         }
 
-        private void initIV(string method, string password)
-        {
-            int ivLen = cipher.IVLength;
-            int md5len = ivLen < sizeof(Guid) ? sizeof(Guid) : ivLen;
-            byte[] iv = new byte[ivLen]; // RAND_bytes(iv.get(), ivLen);
-
-            // MD5->RC4
-            Buffer.BlockCopy(HashAlgorithm<MD5>.
-                ComputeHash(
-                    merges(
-                        Encoding.Default.GetBytes($"SkylakeNAT@{method}."),
-                        key,
-                        Encoding.Default.GetBytes($".{password}"))), 0, iv, 0, sizeof(Guid));
-            fixed (byte* piv = iv)
-            fixed (byte* pkey = key)
-                RC4.rc4_crypt(pkey, cipher.KeyLength, piv, ivLen, 0, 0);
-
-            // INIT-CTX
-            initCipher(ref encryptCTX, iv, true);
-            initCipher(ref decryptCTX, iv, false);
-        }
-
         public virtual BufferSegment Encrypt(BufferSegment data)
         {
             lock (this.LockObj)
@@ -143,6 +137,8 @@
                 byte[] cipherText = new byte[outLen];
                 fixed (byte* buf = &data.Buffer[data.Offset])
                 {
+                    // INIT-CTX
+                    initCipher(ref encryptCTX, iv, true);
                     if (Native.EVP_CipherUpdate(encryptCTX, cipherText, out outLen, buf, data.Length) <= 0)
                     {
                         return new BufferSegment(BufferSegment.Empty);
@@ -160,11 +156,13 @@
                 {
                     return new BufferSegment(BufferSegment.Empty);
                 }
-
+                
                 int outLen = data.Length + cipher.BlockSize;
                 byte[] cipherText = new byte[outLen];
                 fixed (byte* buf = &data.Buffer[data.Offset])
                 {
+                    // INIT-CTX
+                    initCipher(ref decryptCTX, iv, false);
                     if (Native.EVP_CipherUpdate(decryptCTX, cipherText, out outLen, buf, data.Length) <= 0)
                     {
                         return new BufferSegment(BufferSegment.Empty);

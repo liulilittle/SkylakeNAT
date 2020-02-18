@@ -4,7 +4,7 @@
     <ShowAllFiles>true</ShowAllFiles>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <LocalDebuggerCommandArguments>--server=192.168.0.104 --port=7521 --key=yy520o! --subtract=25 --max-concurrent=4</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>--server=192.168.0.104 --port=7521 --key=yy520o! --subtract=25 --max-concurrent=1</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
 </Project>

@@ -13,21 +13,39 @@ Socket::Socket(boost::asio::io_context& context, int id, const std::string& serv
 	, _context(context)
 	, _server(server)
 	, _port(port)
+#ifdef __USE_UDP_PAYLOAD_TAP_PACKET
+	, _fd(0)
+#else
 	, _socket(context)
 	, _resolver(context)
 	, _strand(context)
 	, _fhdr(false)
 	, _fseek(0)
+#endif
 	, _key(key)
 	, _subtract(subtract) {
 	if (port <= 0 && port > 65535)
 		throw std::out_of_range("The port used to connect to the server is less than or equal to 0 or greater than 65535");
+#ifndef __USE_UDP_PAYLOAD_TAP_PACKET
 	_phdr = std::shared_ptr<unsigned char>((unsigned char*)Memory::Alloc(sizeof(pkg_hdr)), [](unsigned char* p) {
 		if (p)
 			Memory::Free(p);
 	});
 #if !defined(_USE_RC4_SIMPLE_ENCIPHER)
 	_encryptor = std::make_shared<Encryptor>(ENCRYPTOR_AES_256_CFB, key + ToString(subtract));
+#endif
+#else
+	_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (_fd <= 0)
+		throw std::runtime_error("Unable to create a file descriptor handle for the socket");
+	_address = inet_addr(server.data());
+    _encryptor = std::make_shared<Encryptor>(ENCRYPTOR_AES_256_CFB, key + ToString(subtract));
+
+    struct sockaddr_in localEP { 0 };
+    localEP.sin_family = AF_INET;
+    localEP.sin_port = 0;
+    localEP.sin_addr.s_addr = 0;
+    bind(_fd, (struct sockaddr*)&localEP, sizeof(localEP));
 #endif
 }
 
@@ -36,6 +54,7 @@ Socket::~Socket() {
 }
 
 void Socket::Close() {
+#ifndef __USE_UDP_PAYLOAD_TAP_PACKET
 	boost::system::error_code ec;
 	try {
 		_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
@@ -45,17 +64,23 @@ void Socket::Close() {
 	_socket.close();
 	_phdr.reset();
 	_messsage.reset();
+#endif
 	if (AbortEvent)
 		AbortEvent = NULL;
 	if (MessageEvent)
 		MessageEvent = NULL;
-#if !defined(_USE_RC4_SIMPLE_ENCIPHER)
+#if !defined(_USE_RC4_SIMPLE_ENCIPHER) || defined(__USE_UDP_PAYLOAD_TAP_PACKET)
 	if (_encryptor)
 		_encryptor = NULL;
+    if (_fd != ~0 && _fd != 0) {
+        closesocket(_fd);
+        _fd = 0;
+    }
 #endif
 }
 
 void Socket::ReceiveAsync(const std::shared_ptr<unsigned char>& buffer, int offset, size_t len, const ReceiveCompletionRoutine& callback) {
+#ifndef __USE_UDP_PAYLOAD_TAP_PACKET
 	if (len && !buffer)
 		throw std::invalid_argument("The buffer parameter is empty but specifies that its length is greater than zero");
 	std::shared_ptr<Socket> self = shared_from_this();
@@ -73,11 +98,19 @@ void Socket::ReceiveAsync(const std::shared_ptr<unsigned char>& buffer, int offs
 	catch (std::exception&) {
 		self->OnAbort();
 	}
+#endif
 }
 
 void Socket::SendAsync(const std::shared_ptr<unsigned char>& buffer, int offset, size_t len, const SendCompletionRoutine& callback) {
     if (len && !buffer)
         throw std::invalid_argument("The buffer parameter is empty but specifies that its length is greater than zero");
+#ifdef __USE_UDP_PAYLOAD_TAP_PACKET
+	struct sockaddr_in in { 0 };
+	in.sin_family = AF_INET;
+	in.sin_addr.s_addr = _address;
+	in.sin_port = ntohs((unsigned short)_port);
+	sendto(_fd,(char*)(buffer.get() + offset), len, 0, (struct sockaddr*)&in, sizeof(in));
+#else
     std::shared_ptr<Socket> self = shared_from_this();
 	std::shared_ptr<unsigned char> packet = buffer;
 	auto output_data = boost::asio::buffer(buffer.get(), len);
@@ -92,9 +125,11 @@ void Socket::SendAsync(const std::shared_ptr<unsigned char>& buffer, int offset,
 	catch (std::exception&) {
 		self->OnAbort();
 	}
+#endif
 }
 
 void Socket::ReadPacketAsync() {
+#ifndef __USE_UDP_PAYLOAD_TAP_PACKET
     try {
         if (!_fhdr)
             ReceiveAsync(_phdr, 0, sizeof(pkg_hdr), &Socket::ReceiveFrameLoopCompletion);
@@ -111,6 +146,7 @@ void Socket::ReadPacketAsync() {
     catch (std::exception&) {
         this->Close();
     }
+#endif
 }
 
 void Socket::OnAbort() {
@@ -126,6 +162,7 @@ void Socket::OnMessage(unsigned short commands, std::shared_ptr<unsigned char>& 
 }
 
 void Socket::ReceiveFrameLoopCompletion(const std::shared_ptr<Socket>& sender, const boost::system::error_code& ec, std::size_t size) {
+#ifndef __USE_UDP_PAYLOAD_TAP_PACKET
     bool aborting = true;
     do {
         if (ec.failed() || 0 == size) {
@@ -187,24 +224,29 @@ void Socket::ReceiveFrameLoopCompletion(const std::shared_ptr<Socket>& sender, c
     else {
         sender->ReadPacketAsync();
     }
+#endif
 }
 
 bool Socket::Available() {
+#ifdef __USE_UDP_PAYLOAD_TAP_PACKET
+	int ndfs = _fd;
+#else
     if (!_socket.is_open())
         return false;
     int ndfs = _socket.native_handle();
-
+#endif
     struct fd_set fd;
     FD_ZERO(&fd);
     FD_SET(ndfs, &fd);
 
     struct timeval tv { 0 };
-    if (0 >= select(0, NULL, &fd, NULL, &tv) || !FD_ISSET(_socket.native_handle(), &fd))
+    if (0 >= select(0, NULL, &fd, NULL, &tv) || !FD_ISSET(ndfs, &fd))
         return false;
     return true;
 }
 
 void Socket::Open(int milliseconds) {
+#ifndef __USE_UDP_PAYLOAD_TAP_PACKET
 	boost::asio::ip::tcp::resolver::query q(_server, std::to_string(_port).c_str());
 	auto results = _resolver.resolve(q);
 	if (results.empty())
@@ -236,6 +278,7 @@ void Socket::Open(int milliseconds) {
 	_socket.set_option(boost::asio::ip::tcp::no_delay(true));
 	_socket.set_option(boost::asio::socket_base::send_buffer_size(524288));
 	_socket.set_option(boost::asio::socket_base::receive_buffer_size(524288));
+#endif
 }
 
 void Socket::Send(unsigned short commands, const std::shared_ptr<unsigned char>& buffer, int offset, size_t len) {
@@ -243,7 +286,7 @@ void Socket::Send(unsigned short commands, const std::shared_ptr<unsigned char>&
 		throw std::invalid_argument("The buffer parameter is empty but specifies that its length is greater than zero");
 	int payload_size = (int)len;
 	std::shared_ptr<unsigned char> payload_segment = buffer;
-#if !defined(_USE_RC4_SIMPLE_ENCIPHER)
+#if !defined(_USE_RC4_SIMPLE_ENCIPHER) || defined(__USE_UDP_PAYLOAD_TAP_PACKET)
 	if (payload_size > 0) {
 		int outlen = 0;
 		payload_segment = _encryptor->Encrypt(buffer.get() + offset, payload_size, outlen);
@@ -287,6 +330,7 @@ void Socket::UnsafeTransmit(const std::shared_ptr<unsigned char>& buffer, int of
 std::shared_ptr<unsigned char> Socket::ReadPacket(unsigned short& commands, int& size) {
 	size = ~0;
 	commands = ~0;
+#ifndef __USE_UDP_PAYLOAD_TAP_PACKET
 	if (!_phdr.get())
 		return NULL;
 	if (!ReadPacketStream(_phdr, 0, sizeof(pkg_hdr)))
@@ -318,9 +362,51 @@ std::shared_ptr<unsigned char> Socket::ReadPacket(unsigned short& commands, int&
 	size = payload_size;
 	commands = pkg->cmd;
 	return payload;
+#else
+	struct sockaddr_in server { 0 };
+	server.sin_family = AF_INET;
+    server.sin_port = 0;
+    server.sin_addr.s_addr = 0;
+
+	char buffer[4 * Tap::MTU];
+	std::shared_ptr<unsigned char> packet = NULL;
+    while (_fd != ~0 && _fd != 0) {
+        int serverlen = sizeof(server);
+        int byteslen = recvfrom(_fd, buffer, sizeof(buffer), 0, (struct sockaddr*)&server, &serverlen);
+        if (byteslen < 0) {
+            continue;
+        }
+        if (byteslen == 0)
+            continue;
+        pkg_hdr* pkg = (pkg_hdr*)buffer;
+        if (pkg->FK != pkg_hdr::FK)
+            continue;
+        int hdrlen = (int)(pkg->len + sizeof(pkg_hdr));
+        if (hdrlen != byteslen)
+            continue;
+        unsigned char* payload = (unsigned char*)pkg + sizeof(pkg_hdr);
+#ifdef _USE_RC4_SIMPLE_ENCIPHER
+        rc4_crypt((unsigned char*)_key.data(),
+            _key.length(),
+            payload,
+            pkg->len,
+            _subtract, 0);
+#endif
+        packet = _encryptor->Decrypt(payload, pkg->len, byteslen);
+        if (!packet.get())
+            break;
+        size = pkg->len;
+        commands = pkg->cmd;
+        break;
+    }
+	return packet;
+#endif
 }
 
 bool Socket::ReadPacketStream(std::shared_ptr<unsigned char>& buffer, int offset, size_t len) {
+#ifdef __USE_UDP_PAYLOAD_TAP_PACKET
+	return false;
+#else
 	if (!buffer.get() || offset < 0 || len < 0)
 		return false;
 	size_t bytes = 0;
@@ -339,6 +425,7 @@ bool Socket::ReadPacketStream(std::shared_ptr<unsigned char>& buffer, int offset
 	catch (std::exception&) {
 		return false;
 	}
+#endif
 }
 
 bool Socket::TryOpen(int marcoseconds) {

@@ -5,7 +5,7 @@
 #include <boost/bind.hpp>
 
 #include "env.h"
-#if !defined(_USE_RC4_SIMPLE_ENCIPHER)
+#if !defined(_USE_RC4_SIMPLE_ENCIPHER) || defined(__USE_UDP_PAYLOAD_TAP_PACKET)
 #include "encryptor.h"
 #endif
 
@@ -73,6 +73,10 @@ private:
 	boost::asio::io_context&													_context;
 	std::string																	_server;
 	int																			_port;
+#ifdef __USE_UDP_PAYLOAD_TAP_PACKET
+	int																			_fd;
+	unsigned int																_address;
+#else
 	boost::asio::ip::tcp::socket												_socket;
 	boost::asio::ip::tcp::resolver												_resolver;
 	boost::asio::io_service::strand												_strand;
@@ -80,9 +84,10 @@ private:
 	std::shared_ptr<unsigned char>												_phdr;
 	std::shared_ptr<unsigned char>												_messsage;
 	int																			_fseek;
+#endif
     std::string                                                                 _key;
     int                                                                         _subtract;
-#if !defined(_USE_RC4_SIMPLE_ENCIPHER)
+#if !defined(_USE_RC4_SIMPLE_ENCIPHER) || defined(__USE_UDP_PAYLOAD_TAP_PACKET)
 	std::shared_ptr<Encryptor>													_encryptor;
 #endif
 };

@@ -46,6 +46,9 @@
     <ClCompile Include="rc4.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="encryptor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tap.h">
@@ -85,6 +88,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="monitor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="encryptor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

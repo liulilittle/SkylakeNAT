@@ -31,6 +31,7 @@ protected:
 	virtual bool											PublicInput(const std::shared_ptr<ip_hdr>& packet, int size);
 	virtual bool											PrivateIntput(ip_hdr* packet, int size);
 	virtual std::shared_ptr<Socket>							NextAvailableChannel();
+    virtual void                                            CreateSocketChannel();
 
 public:
 	const int												Id;
@@ -52,4 +53,22 @@ private:
 	std::recursive_mutex									_syncobj;
     std::string                                             _key;
     int                                                     _subtract;
+#pragma pack(push, 1)
+    struct NATAuthenticationResponse
+    {
+    public:
+        struct Dhcp
+        {
+        public:
+            uint32_t						local;
+            uint32_t						dhcp;
+            uint32_t						dns;
+        } dhcp;
+    public:
+        inline NATAuthenticationResponse() {
+            memset(this, 0, sizeof(*this));
+        }
+    };
+#pragma pack(pop)
+    NATAuthenticationResponse                               _dhcp;
 };

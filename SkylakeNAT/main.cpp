@@ -1,6 +1,6 @@
 #include "env.h"
 #include "nat.h"
-#if !defined(_USE_RC4_SIMPLE_ENCIPHER)
+#if !defined(_USE_RC4_SIMPLE_ENCIPHER) || defined(__USE_UDP_PAYLOAD_TAP_PACKET)
 #include "encryptor.h"
 #endif
 
@@ -11,10 +11,11 @@
 #pragma comment(lib, "Iphlpapi.lib")
 #pragma comment(lib, "Netapi32.lib")
 #pragma comment(lib, "dbghelp.lib")
-#if !defined(_USE_RC4_SIMPLE_ENCIPHER)
+#if !defined(_USE_RC4_SIMPLE_ENCIPHER) || defined(__USE_UDP_PAYLOAD_TAP_PACKET)
 #pragma comment (lib, "libeay32.lib" )
 #pragma comment (lib, "ssleay32.lib" )
 #endif
+
 inline std::string carg(const char* name, int argc, const char* argv[])
 {
 	if (argc <= 1)
@@ -52,10 +53,13 @@ LONG WINAPI ApplicationCrashHandler(
 
 int main(int argc, const char* argv[])
 {
+	WSADATA wsaData{ 0 };
+	WSAStartup(MAKEWORD(2, 2), &wsaData);
+
 	SetUnhandledExceptionFilter(ApplicationCrashHandler);
 	SetConsoleTitle(TEXT("SkylakeNAT-cli"));
-	
-#if !defined(_USE_RC4_SIMPLE_ENCIPHER)
+
+#if !defined(_USE_RC4_SIMPLE_ENCIPHER) || defined(__USE_UDP_PAYLOAD_TAP_PACKET)
 	Encryptor::Initialize();
 #endif
 	if (argc < 5) {

@@ -36,14 +36,15 @@ protected:
 	virtual std::shared_ptr<unsigned char>				New(int length, int memset = ~0);
 
 private:
-	std::shared_ptr<EVP_CIPHER_CTX>						initCipher(const unsigned char* iv, int ivlen, bool isCipher);
+	void												initCipher(std::shared_ptr<EVP_CIPHER_CTX>& context, 
+		const unsigned char* iv, int ivlen, bool isCipher);
 	void												initKey(const std::string& method, const std::string password);
-	void												initIV(const std::string& method, const std::string password);
 
 private:
 	const EVP_CIPHER*									_cipher;
 	std::shared_ptr<EVP_CIPHER_CTX>						_context;
 	std::shared_ptr<unsigned char>						_key; // _cipher->key_len
+	std::shared_ptr<unsigned char>						_iv;
 	std::string											_method;
 	std::string											_password;
 	std::shared_ptr<EVP_CIPHER_CTX>						_encryptCTX;

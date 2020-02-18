@@ -26,7 +26,7 @@ std::string				GetFullExecutionFilePath();
 std::string				GetApplicationStartupPath();
 std::string				ToString(int value, int radix = 10);
 bool					WriteDumpFile(const char* dumpFilePathName, EXCEPTION_POINTERS *exception);
-#if !_DEBUG
+#ifndef _DEBUG
 #define					PrintTraceToScreen(...)
 #define					PrintTraceEthernetInput(...)
 #else 
@@ -48,6 +48,9 @@ inline void				PrintTraceToScreen(const char* fmt, const Args& ...args)
 		}
 	}
 }
+#ifdef __NO_PRINT_TRACE_ETHERNET_INPUT_MESSAGE
+#define					PrintTraceEthernetInput(...)
+#else
 template<typename T>
 inline void				PrintTraceEthernetInput(T packet, int wlan, int success) {
 	if (!packet)
@@ -59,4 +62,5 @@ inline void				PrintTraceEthernetInput(T packet, int wlan, int success) {
 	else
 		PrintTraceToScreen("LAN  [%d] %.2d LINK %-16s -> %-16s", success, packet->_proto, src.c_str(), dest.c_str());
 }
+#endif
 #endif
