@@ -136,6 +136,9 @@ void Tap::Dhcp(uint32_t dhcp, uint32_t local, uint32_t dns) {
 	if (!interfaces.get())
 		throw std::runtime_error("The call to the \"GetNetworkInterface\" member function returns an unexpected reference to the network interface");
 
+    if (0 == dns)
+        dns = inet_addr("8.8.8.8");
+
 	char commands[1000];
 	sprintf(commands, "netsh interface ip set dns %u static %s", interfaces->IfIndex, GetAddressText(dns).data());
 	if (!Tap::System(commands))

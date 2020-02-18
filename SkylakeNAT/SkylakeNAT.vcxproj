@@ -118,7 +118,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>false</SDLCheck>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;_NEDMALLOC_NO_USE;__TAP_ASYNC_LISTEN_PACKET;_USE_RC4_SIMPLE_ENCIPHER;__NOT_USE_ASIO_WRITE_TAP_PACKET;__USE_UDP_PAYLOAD_TAP_PACKET;__NO_PRINT_TRACE_ETHERNET_INPUT_MESSAGE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;_NEDMALLOC_NO_USE;__TAP_ASYNC_LISTEN_PACKET;_USE_RC4_SIMPLE_ENCIPHER;__NOT_USE_ASIO_WRITE_TAP_PACKET;__USE_UDP_PAYLOAD_TAP_PACKET;___NO_PRINT_TRACE_ETHERNET_INPUT_MESSAGE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
