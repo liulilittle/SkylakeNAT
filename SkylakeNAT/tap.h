@@ -81,7 +81,7 @@ private:
 	std::shared_ptr<NetworkInterface>													_interfaces;
 	int																					_pullUp;
 	Monitor																				_outsyncobj;
-    bool                                                                                _asyncsending;
+    bool                                                                                _sendingasync;
     struct Packet
     {
         std::shared_ptr<ip_hdr>                                                         packet;

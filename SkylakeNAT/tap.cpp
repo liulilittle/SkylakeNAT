@@ -66,7 +66,7 @@ Tap::Tap(std::string componentId)
     : _disposed(false)
     , _tap(NULL)
     , _pullUp(0)
-    , _asyncsending(false) {
+    , _sendingasync(false) {
     if (componentId.empty())
         throw std::invalid_argument("You cannot provide an empty ethernet device componentId");
     _interfaces = Tap::FindNetworkInterface(componentId);
@@ -140,10 +140,10 @@ void Tap::Dhcp(uint32_t dhcp, uint32_t local, uint32_t dns) {
     if (0 == dns)
         dns = inet_addr("8.8.8.8");
 
-	char commands[1000];
-	sprintf(commands, "netsh interface ip set dns %u static %s", interfaces->IfIndex, GetAddressText(dns).data());
-	if (!Tap::System(commands))
-		throw std::runtime_error("Unable to execute overwrite ethernet tap network device static dns configuration");
+	//char commands[1000];
+	//sprintf(commands, "netsh interface ip set dns %u static %s", interfaces->IfIndex, GetAddressText(dns).data());
+	//if (!Tap::System(commands))
+	//	throw std::runtime_error("Unable to execute overwrite ethernet tap network device static dns configuration");
 
 	int size = 0;
 	// TAP_WIN_IOCTL_CONFIG_TUN
@@ -158,16 +158,6 @@ void Tap::Dhcp(uint32_t dhcp, uint32_t local, uint32_t dns) {
 			sizeof(address), (LPDWORD)&size))
 			throw std::runtime_error("Unable to configure default ethernet ip settings");
 	}
-	//// TAP_WIN_IOCTL_CONFIG_POINT_TO_POINT
-	//{
-	//	uint32_t address[2] = {
-	//		local,
-	//		inet_addr("255.255.0.0"),
-	//	};
-	//	if (!synchronized_deviceiocontrol(_tap, TAP_WIN_IOCTL_CONFIG_POINT_TO_POINT, &address, sizeof(address), &address,
-	//		sizeof(address), (LPDWORD)&size))
-	//		throw std::runtime_error("The TAP-Windows driver rejected a DeviceIoControl call to set Point-to-Point mode");
-	//}
 	// TAP_WIN_IOCTL_CONFIG_DHCP_MASQ
 	{
 		uint32_t address[4] = {
@@ -199,60 +189,47 @@ bool Tap::Output(const std::shared_ptr<ip_hdr>& packet, int size, boost::asio::i
 	if (this->_disposed)
 		return false;
 	DWORD bytesToWrite = 0;
-	if (context) {
-		do {
-            auto self = shared_from_this();
-			bool success = false;
-			auto overlapped = std::make_shared<OVERLAPPED>(OVERLAPPED{ 0 });
-			overlapped->hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-			auto afo = std::make_shared<boost::asio::windows::object_handle>(*context, overlapped->hEvent);
-			do {
-				MonitorScope scope(_outsyncobj);
-                if (_asyncsending) {
-                    auto& syncobj = self->_outsyncobj;
-                    syncobj.Enter();
-                    {
-                        Tap::Packet pkg;
-                        {
-                            pkg.packet = packet;
-                            pkg.size = size;
-                            pkg.context = context;
-                        }
-                        success = true;
-                        _sendsqueue.push_back(pkg);
-                    }
-                    syncobj.Exit();
-                    break;
-                }
-                else {
-                    success = WriteFile(_tap, packet.get(), size, &bytesToWrite, overlapped.get());
-                    if (success) {
+    if (context) {
+        bool _success = false;
+        _outsyncobj.Enter();
+        do {
+            if (_sendingasync) {
+                Tap::Packet _pkg;
+                _pkg.packet = packet;
+                _pkg.size = size;
+                _pkg.context = context;
+                _success = true;
+                _sendsqueue.push_back(_pkg);
+                break;
+            }
+            else {
+                auto overlapped = std::make_shared<OVERLAPPED>(OVERLAPPED{ 0 });
+                overlapped->hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+                auto afo = std::make_shared<boost::asio::windows::object_handle>(*context, overlapped->hEvent);
+                do {
+                    _success = WriteFile(_tap, packet.get(), size, &bytesToWrite, overlapped.get());
+                    if (_success)
                         NextOutput();
-                    }
                     else {
                         if (ERROR_IO_PENDING != GetLastError())
                             break;
-                        _asyncsending = true;
-                        try {
-                            afo->async_wait([self, packet, afo](const boost::system::error_code& err) {
-                                afo->close();
-                                self->NextOutput();
-                            });
-                            success = true;
-                        }
-                        catch (std::exception&) {
-                            _asyncsending = false;
-                            break;
-                        }
+                        _success = true;
+                        _sendingasync = true;
+                        auto self = shared_from_this();
+                        afo->async_wait([self, packet, afo](const boost::system::error_code& err) {
+                            afo->close();
+                            self->NextOutput();
+                        });
                     }
+                } while (0, 0);
+                if (!_success || !_sendingasync) {
+                    afo->close();
                 }
-			} while (0);
-			if (!success)
-				if (afo)
-					afo->close();
-			return success;
-		} while (0);
-	}
+            }
+        } while (0, 0);
+        _outsyncobj.Exit();
+        return _success;
+    }
 	else {
 		bool success = false;
 		OVERLAPPED overlapped{ 0 };
@@ -556,15 +533,14 @@ void Tap::PullUpEthernet() {
 	}
 }
 
-void Tap::NextOutput()
-{
+void Tap::NextOutput() {
     Packet pkg;
     pkg.size = 0;
     do {
         auto& syncobj = _outsyncobj;
         syncobj.Enter();
         {
-            _asyncsending = false;
+            _sendingasync = false;
             if (!_sendsqueue.empty()) {
                 pkg = _sendsqueue.front();
                 _sendsqueue.pop_front();

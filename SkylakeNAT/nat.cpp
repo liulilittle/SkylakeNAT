@@ -47,7 +47,7 @@ void NAT::Listen() {
 	auto self = shared_from_this();
 	if (self->_disposed)
 		throw std::runtime_error("The current state causes the operation to be invalid because the current object has been freed");
-	int concurrents = min(4, GetProcessorCount());
+	int concurrents = min(1, GetProcessorCount());
 	for (int i = 0; i < concurrents; i++) {
 		std::thread([](std::shared_ptr<NAT> self) {
 			self->_context.run();
