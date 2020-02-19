@@ -63,28 +63,29 @@ synchronized_deviceiocontrol(
 }
 
 Tap::Tap(std::string componentId)
-	: _disposed(false)
-	, _tap(NULL)
-	, _pullUp(0) {
-	if (componentId.empty())
-		throw std::invalid_argument("You cannot provide an empty ethernet device componentId");
-	_interfaces = Tap::FindNetworkInterface(componentId);
-	if (!_interfaces.get())
-		throw std::invalid_argument("The device you provide to componentId is not valid and it cannot go to the specified componentId in the system network device");
-	std::stringstream ss;
-	ss << USERMODEDEVICEDIR;
-	ss << componentId.data();
-	ss << TAP_WIN_SUFFIX;
-	_tap = CreateFileA(
-		ss.str().c_str(),
-		GENERIC_READ | GENERIC_WRITE,
-		FILE_SHARE_READ | FILE_SHARE_WRITE,
-		NULL,
-		OPEN_EXISTING,
-		FILE_FLAG_OVERLAPPED | FILE_ATTRIBUTE_SYSTEM,
-		NULL);
-	if (NULL == _tap)
-		throw std::system_error(std::make_error_code(std::errc::no_such_device_or_address), "Unable to open drive handle for ethernet tap device");
+    : _disposed(false)
+    , _tap(NULL)
+    , _pullUp(0)
+    , _asyncsending(false) {
+    if (componentId.empty())
+        throw std::invalid_argument("You cannot provide an empty ethernet device componentId");
+    _interfaces = Tap::FindNetworkInterface(componentId);
+    if (!_interfaces.get())
+        throw std::invalid_argument("The device you provide to componentId is not valid and it cannot go to the specified componentId in the system network device");
+    std::stringstream ss;
+    ss << USERMODEDEVICEDIR;
+    ss << componentId.data();
+    ss << TAP_WIN_SUFFIX;
+    _tap = CreateFileA(
+        ss.str().c_str(),
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_OVERLAPPED | FILE_ATTRIBUTE_SYSTEM,
+        NULL);
+    if (NULL == _tap)
+        throw std::system_error(std::make_error_code(std::errc::no_such_device_or_address), "Unable to open drive handle for ethernet tap device");
 }
 
 Tap::~Tap() {
@@ -200,28 +201,51 @@ bool Tap::Output(const std::shared_ptr<ip_hdr>& packet, int size, boost::asio::i
 	DWORD bytesToWrite = 0;
 	if (context) {
 		do {
+            auto self = shared_from_this();
 			bool success = false;
 			auto overlapped = std::make_shared<OVERLAPPED>(OVERLAPPED{ 0 });
 			overlapped->hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 			auto afo = std::make_shared<boost::asio::windows::object_handle>(*context, overlapped->hEvent);
 			do {
 				MonitorScope scope(_outsyncobj);
-				success = WriteFile(_tap, packet.get(), size, &bytesToWrite, overlapped.get());
-				if (!success) {
-					if (ERROR_IO_PENDING != GetLastError())
-						break;
-					if (!afo)
-						break;
-					try {
-						afo->async_wait([packet, afo](const boost::system::error_code& err) {
-							afo->close();
-						});
-						success = true;
-					}
-					catch (std::exception&) {
-						break;
-					}
-				}
+                if (_asyncsending) {
+                    auto& syncobj = self->_outsyncobj;
+                    syncobj.Enter();
+                    {
+                        Tap::Packet pkg;
+                        {
+                            pkg.packet = packet;
+                            pkg.size = size;
+                            pkg.context = context;
+                        }
+                        success = true;
+                        _sendsqueue.push_back(pkg);
+                    }
+                    syncobj.Exit();
+                    break;
+                }
+                else {
+                    success = WriteFile(_tap, packet.get(), size, &bytesToWrite, overlapped.get());
+                    if (success) {
+                        NextOutput();
+                    }
+                    else {
+                        if (ERROR_IO_PENDING != GetLastError())
+                            break;
+                        _asyncsending = true;
+                        try {
+                            afo->async_wait([self, packet, afo](const boost::system::error_code& err) {
+                                afo->close();
+                                self->NextOutput();
+                            });
+                            success = true;
+                        }
+                        catch (std::exception&) {
+                            _asyncsending = false;
+                            break;
+                        }
+                    }
+                }
 			} while (0);
 			if (!success)
 				if (afo)
@@ -530,4 +554,25 @@ void Tap::PullUpEthernet() {
 		if (!synchronized_deviceiocontrol(_tap, TAP_WIN_IOCTL_SET_MEDIA_STATUS, &_pullUp, 4, &_pullUp, 4, (LPDWORD)&size))
 			throw std::runtime_error("Unable to pull up ethernet device for work");
 	}
+}
+
+void Tap::NextOutput()
+{
+    Packet pkg;
+    pkg.size = 0;
+    do {
+        auto& syncobj = _outsyncobj;
+        syncobj.Enter();
+        {
+            _asyncsending = false;
+            if (!_sendsqueue.empty()) {
+                pkg = _sendsqueue.front();
+                _sendsqueue.pop_front();
+            }
+        }
+        syncobj.Exit();
+    } while (0, 0);
+    if (pkg.size) {
+        Output(pkg.packet, pkg.size, pkg.context);
+    }
 }

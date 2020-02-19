@@ -1,18 +1,23 @@
 #pragma once
 
+#include <boost/enable_shared_from_this.hpp>
+#include <boost/asio.hpp>
+#include <boost/bind.hpp>
+
 #include <stdio.h>
 #include <stdint.h>
 #include <string>
 #include <functional>
 #include <set>
 #include <map>
+#include <list>
 #include <boost/asio.hpp>
 
 #include "ip.h"
 #include "env.h"
 #include "monitor.h"
 
-class Tap
+class Tap : public std::enable_shared_from_this<Tap>
 {
 public:
 	class NetworkInterface
@@ -59,6 +64,9 @@ protected:
 	virtual void																		OnInput(ip_hdr* packet, int size);
 	virtual void																		PullUpEthernet();
 
+private:
+    void                                                                                NextOutput();
+
 public:
 	TapInputEventHandler																EventInput;
 
@@ -73,4 +81,12 @@ private:
 	std::shared_ptr<NetworkInterface>													_interfaces;
 	int																					_pullUp;
 	Monitor																				_outsyncobj;
+    bool                                                                                _asyncsending;
+    struct Packet
+    {
+        std::shared_ptr<ip_hdr>                                                         packet;
+        int                                                                             size;
+        boost::asio::io_context*                                                        context;
+    };
+    std::list<Packet>                                                                   _sendsqueue;
 };
