@@ -41,6 +41,8 @@ NAT::NAT(const std::shared_ptr<Tap::NetworkInterface>& interfaces, int id, std::
 	if (!_tap)
 		throw std::runtime_error("Unable to build an instance of an ethernet tap character device");
 	_currentsocket = _sockets.end();
+    _packetpersecondcounts = 0;
+    _packetpersecondtimes = GetTickCount(false);
 }
 
 void NAT::Listen() {
@@ -230,46 +232,50 @@ void NAT::OnAbort() {
 }
 
 bool NAT::PublicInput(const std::shared_ptr<ip_hdr>& packet, int size) {
-	bool success = false;
-	if (!packet.get() || size <= 0)
-		return success;
-	do {
+    bool success = false;
+    if (!packet.get() || size <= 0)
+        return success;
+    do {
 #ifdef _NOT_USE_ASIO_WRITE_TAP_PACKET
-		success = _tap->Output(packet, size, NULL);
+        success = _tap->Output(packet, size, NULL);
 #else
-		success = _tap->Output(packet, size, &_context);
+        success = _tap->Output(packet, size, &_context);
 #endif
-	} while (0);
-	PrintTraceEthernetInput(packet, 1, success);
-	return success;
+    } while (0, 0);
+#ifdef _ETHERNET_WLAN_INTPUT_PRINT_TRACE
+    PrintTraceEthernetInput(packet, 1, success);
+#endif
+    return success;
 }
 
 bool NAT::PrivateIntput(ip_hdr* packet, int size) {
-	bool success = false;
-	if (!packet || size <= 0)
-		return success;
-	int available_concurrent = (int)InterlockedCompareExchange((unsigned int*)&_availableconcurrent, 0, 0);
-	for (int i = 0; i < available_concurrent; i++) {
-		std::shared_ptr<Socket> socket = NextAvailableChannel();
-		if (!socket)
-			continue;
-		auto message_data = std::shared_ptr<unsigned char>((unsigned char*)Memory::Alloc(size), [](unsigned char* p) {
-			if (p)
-				Memory::Free(p);
-		});
-		if (!message_data)
-			break;
-		memcpy(message_data.get(), packet, size);
-		try {
-			socket->Send(NATCommands_kEthernetOutput, message_data, size);
-			success |= true;
-		}
-		catch (std::exception&) {
-			socket->Close();
-		}
-	}
-	PrintTraceEthernetInput(packet, 0, success);
-	return success;
+    bool success = false;
+    if (!packet || size <= 0)
+        return success;
+    int available_concurrent = (int)InterlockedCompareExchange((unsigned int*)&_availableconcurrent, 0, 0);
+    for (int i = 0; i < available_concurrent; i++) {
+        std::shared_ptr<Socket> socket = NextAvailableChannel();
+        if (!socket)
+            continue;
+        auto message_data = std::shared_ptr<unsigned char>((unsigned char*)Memory::Alloc(size), [](unsigned char* p) {
+            if (p)
+                Memory::Free(p);
+        });
+        if (!message_data)
+            break;
+        memcpy(message_data.get(), packet, size);
+        try {
+            socket->Send(NATCommands_kEthernetOutput, message_data, size);
+            success |= true;
+        }
+        catch (std::exception&) {
+            socket->Close();
+        }
+    }
+#ifdef _ETHERNET_LLAN_INTPUT_PRINT_TRACE
+    PrintTraceEthernetInput(packet, 0, success);
+#endif
+    return success;
 }
 
 std::shared_ptr<Socket> NAT::NextAvailableChannel() {

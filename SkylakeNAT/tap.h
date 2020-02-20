@@ -73,6 +73,7 @@ public:
 public:
 	static const int MTU																= 1500;
 	static const int MSS																= 1400;
+    static const int MIP                                                                = 1486;
 	static const int MFP																= 65535;
 
 private:
@@ -81,12 +82,12 @@ private:
 	std::shared_ptr<NetworkInterface>													_interfaces;
 	int																					_pullUp;
 	Monitor																				_outsyncobj;
-    bool                                                                                _sendingasync;
+    bool                                                                                _sendingoutput;
     struct Packet
     {
         std::shared_ptr<ip_hdr>                                                         packet;
         int                                                                             size;
         boost::asio::io_context*                                                        context;
     };
-    std::list<Packet>                                                                   _sendsqueue;
+    std::list<Packet>                                                                   _sendsqueues;
 };

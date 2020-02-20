@@ -66,7 +66,7 @@ Tap::Tap(std::string componentId)
     : _disposed(false)
     , _tap(NULL)
     , _pullUp(0)
-    , _sendingasync(false) {
+    , _sendingoutput(false) {
     if (componentId.empty())
         throw std::invalid_argument("You cannot provide an empty ethernet device componentId");
     _interfaces = Tap::FindNetworkInterface(componentId);
@@ -175,10 +175,9 @@ void Tap::Dhcp(uint32_t dhcp, uint32_t local, uint32_t dns) {
 void Tap::Close() {
 	if (!_disposed) {
 		_disposed = true;
-		if (_tap) {
+		if (_tap) 
 			CloseHandle(_tap);
-			_tap = NULL;
-		}
+        _tap = NULL;
 		EventInput = NULL;
 	}
 }
@@ -193,16 +192,18 @@ bool Tap::Output(const std::shared_ptr<ip_hdr>& packet, int size, boost::asio::i
         bool _success = false;
         _outsyncobj.Enter();
         do {
-            if (_sendingasync) {
+#ifndef __NOT_USE_ASYNC_SEND_TAP_PACKET_QUEUE
+            if (_sendingoutput) {
                 Tap::Packet _pkg;
                 _pkg.packet = packet;
                 _pkg.size = size;
                 _pkg.context = context;
                 _success = true;
-                _sendsqueue.push_back(_pkg);
+                _sendsqueues.push_back(_pkg);
                 break;
             }
             else {
+#endif
                 auto overlapped = std::make_shared<OVERLAPPED>(OVERLAPPED{ 0 });
                 overlapped->hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
                 auto afo = std::make_shared<boost::asio::windows::object_handle>(*context, overlapped->hEvent);
@@ -213,19 +214,23 @@ bool Tap::Output(const std::shared_ptr<ip_hdr>& packet, int size, boost::asio::i
                     else {
                         if (ERROR_IO_PENDING != GetLastError())
                             break;
-                        _success = true;
-                        _sendingasync = true;
+                        else {
+                            _success = true;
+                            _sendingoutput = true;
+                        }
                         auto self = shared_from_this();
-                        afo->async_wait([self, packet, afo](const boost::system::error_code& err) {
+                        afo->async_wait([self, packet, afo](const boost::system::error_code&) {
                             afo->close();
                             self->NextOutput();
                         });
                     }
                 } while (0, 0);
-                if (!_success || !_sendingasync) {
+                if (!_success || !_sendingoutput) {
                     afo->close();
                 }
+#ifndef __NOT_USE_ASYNC_SEND_TAP_PACKET_QUEUE
             }
+#endif
         } while (0, 0);
         _outsyncobj.Exit();
         return _success;
@@ -540,10 +545,10 @@ void Tap::NextOutput() {
         auto& syncobj = _outsyncobj;
         syncobj.Enter();
         {
-            _sendingasync = false;
-            if (!_sendsqueue.empty()) {
-                pkg = _sendsqueue.front();
-                _sendsqueue.pop_front();
+            _sendingoutput = false;
+            if (!_sendsqueues.empty()) {
+                pkg = _sendsqueues.front();
+                _sendsqueues.pop_front();
             }
         }
         syncobj.Exit();

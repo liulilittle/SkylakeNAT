@@ -64,3 +64,30 @@ inline void				PrintTraceEthernetInput(T packet, int wlan, int success) {
 }
 #endif
 #endif
+inline void             sleep(long long nanoseconds100) 
+{
+    if (nanoseconds100 <= 0)
+    {
+        return;
+    }
+
+    unsigned int milliseconds = (unsigned int)(nanoseconds100 / 10000);
+    unsigned int nanoseconds = (unsigned int)(nanoseconds100 % 10000);
+
+    timeBeginPeriod(1);
+    Sleep(milliseconds);
+    timeEndPeriod(1);
+
+    LARGE_INTEGER startTicks;
+    QueryPerformanceCounter(&startTicks);
+    while (1)
+    {
+        LARGE_INTEGER currentTicks;
+        QueryPerformanceCounter(&currentTicks);
+        LONGLONG llElaspedTicks = currentTicks.QuadPart - startTicks.QuadPart;
+        if (llElaspedTicks >= nanoseconds)
+        {
+            break;
+        }
+    }
+}
