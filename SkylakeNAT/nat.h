@@ -71,6 +71,4 @@ private:
     };
 #pragma pack(pop)
     NATAuthenticationResponse                               _dhcp;
-    int                                                     _packetpersecondcounts;
-    unsigned long long                                      _packetpersecondtimes;
 };

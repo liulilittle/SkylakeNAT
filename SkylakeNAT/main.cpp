@@ -84,5 +84,5 @@ int main(int argc, const char* argv[])
 			GetApplicationId(), server, port, maxconcurrent, key, subtract);
 		nat->Listen();
 	}
-	return 0;
+	return getchar();
 }

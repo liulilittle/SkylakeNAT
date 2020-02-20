@@ -40,9 +40,7 @@ NAT::NAT(const std::shared_ptr<Tap::NetworkInterface>& interfaces, int id, std::
 	_tap = std::make_shared<Tap>(interfaces->Id);
 	if (!_tap)
 		throw std::runtime_error("Unable to build an instance of an ethernet tap character device");
-	_currentsocket = _sockets.end();
-    _packetpersecondcounts = 0;
-    _packetpersecondtimes = GetTickCount(false);
+	_currentsocket = _sockets.end();;
 }
 
 void NAT::Listen() {

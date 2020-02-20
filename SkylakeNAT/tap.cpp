@@ -79,7 +79,7 @@ Tap::Tap(std::string componentId)
     _tap = CreateFileA(
         ss.str().c_str(),
         GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        NULL,
         NULL,
         OPEN_EXISTING,
         FILE_FLAG_OVERLAPPED | FILE_ATTRIBUTE_SYSTEM,
@@ -95,55 +95,42 @@ Tap::~Tap() {
 void Tap::Listen(uint32_t dhcp, uint32_t local) {
 	this->PullUpEthernet();
 	this->Dhcp(dhcp, local, 0);
-	do {
-		unsigned char packet[MFP];
-		int size = 0;
-		while (!this->_disposed) {
-			OVERLAPPED overlapped{ 0 };
-#ifdef _TAP_ASYNC_LISTEN_PACKET
-			overlapped.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-			if (!overlapped.hEvent) {
-				if (!ReadFile(_tap, packet, MFP, (LPDWORD)&size, &overlapped))
-					size = NULL;
-			}
-			else {
-				if (!ReadFile(_tap, packet, MFP, (LPDWORD)&size, &overlapped)) {
-					DWORD dwWait = WaitForSingleObject(overlapped.hEvent, 1000);
-					if (dwWait == WAIT_TIMEOUT)
-						size = 0;
-					else if (dwWait != WAIT_OBJECT_0)
-						size = ~0;
-					else if (!GetOverlappedResult(_tap, &overlapped, (LPDWORD)&size, FALSE))
-						size = ~0;
-				}
-				CloseHandle(overlapped.hEvent);
-			}
-#else
-			if (!ReadFile(_tap, packet, MFP, (LPDWORD)&size, &overlapped))
-				if (!GetOverlappedResult(_tap, &overlapped, (LPDWORD)&size, TRUE))
-					size = ~0;
-#endif
-			if (size <= 0)
-				continue;
-			ip_hdr* iphdr = ip_hdr::Parse(packet, size);
-			if (iphdr)
-				this->OnInput(iphdr, size);
-		}
-	} while (false);
+    do {
+        unsigned char packet[MFP];
+        int size = 0;
+        while (!this->_disposed) {
+            OVERLAPPED overlapped{ 0 };
+            overlapped.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+            if (!overlapped.hEvent) {
+                break;
+            }
+            else {
+                if (!ReadFile(_tap, packet, sizeof(packet), (LPDWORD)&size, &overlapped)) {
+                    if (ERROR_IO_PENDING != GetLastError())
+                        break;
+                    DWORD dwWait = WaitForSingleObject(overlapped.hEvent, INFINITE);
+                    if (dwWait == WAIT_TIMEOUT)
+                        size = 0;
+                    else if (dwWait != WAIT_OBJECT_0)
+                        size = ~0;
+                    else if (!GetOverlappedResult(_tap, &overlapped, (LPDWORD)&size, FALSE))
+                        size = ~0;
+                }
+                CloseHandle(overlapped.hEvent);
+            }
+            if (size <= 0)
+                continue;
+            ip_hdr* iphdr = ip_hdr::Parse(packet, size);
+            if (iphdr)
+                this->OnInput(iphdr, size);
+        }
+    } while (0, 0);
 }
 
 void Tap::Dhcp(uint32_t dhcp, uint32_t local, uint32_t dns) {
 	std::shared_ptr<Tap::NetworkInterface>& interfaces = GetNetworkInterface();
 	if (!interfaces.get())
 		throw std::runtime_error("The call to the \"GetNetworkInterface\" member function returns an unexpected reference to the network interface");
-
-    if (0 == dns)
-        dns = inet_addr("8.8.8.8");
-
-	//char commands[1000];
-	//sprintf(commands, "netsh interface ip set dns %u static %s", interfaces->IfIndex, GetAddressText(dns).data());
-	//if (!Tap::System(commands))
-	//	throw std::runtime_error("Unable to execute overwrite ethernet tap network device static dns configuration");
 
 	int size = 0;
 	// TAP_WIN_IOCTL_CONFIG_TUN
@@ -183,11 +170,11 @@ void Tap::Close() {
 }
 
 bool Tap::Output(const std::shared_ptr<ip_hdr>& packet, int size, boost::asio::io_context* context) {
-	if (NULL == packet || size <= 0 || NULL == this)
-		return false;
-	if (this->_disposed)
-		return false;
-	DWORD bytesToWrite = 0;
+    if (NULL == packet || size <= 0 || NULL == this)
+        return false;
+    if (this->_disposed)
+        return false;
+    DWORD bytesToWrite = 0;
     if (context) {
         bool _success = false;
         _outsyncobj.Enter();
@@ -206,6 +193,8 @@ bool Tap::Output(const std::shared_ptr<ip_hdr>& packet, int size, boost::asio::i
 #endif
                 auto overlapped = std::make_shared<OVERLAPPED>(OVERLAPPED{ 0 });
                 overlapped->hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+                if (!overlapped->hEvent)
+                    break;
                 auto afo = std::make_shared<boost::asio::windows::object_handle>(*context, overlapped->hEvent);
                 do {
                     _success = WriteFile(_tap, packet.get(), size, &bytesToWrite, overlapped.get());
@@ -227,6 +216,7 @@ bool Tap::Output(const std::shared_ptr<ip_hdr>& packet, int size, boost::asio::i
                 } while (0, 0);
                 if (!_success || !_sendingoutput) {
                     afo->close();
+                    NextOutput();
                 }
 #ifndef __NOT_USE_ASYNC_SEND_TAP_PACKET_QUEUE
             }
@@ -235,35 +225,36 @@ bool Tap::Output(const std::shared_ptr<ip_hdr>& packet, int size, boost::asio::i
         _outsyncobj.Exit();
         return _success;
     }
-	else {
-		bool success = false;
-		OVERLAPPED overlapped{ 0 };
-		overlapped.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-		do {
-			MonitorScope scope(_outsyncobj);
-			success = WriteFile(_tap, packet.get(), size, &bytesToWrite, &overlapped);
-			if (!success) {
-				if (ERROR_IO_PENDING != GetLastError())
-					break;
-				if (!overlapped.hEvent) {
-					if (!GetOverlappedResult(_tap, &overlapped, &bytesToWrite, TRUE))
-						break;
-					success = true;
-				}
-				else {
-					DWORD dw = WaitForSingleObject(overlapped.hEvent, INFINITE);
-					if (dw != WAIT_OBJECT_0)
-						break;
-					if (!GetOverlappedResult(_tap, &overlapped, &bytesToWrite, FALSE))
-						break;
-					success = true;
-				}
-			}
-		} while (0);
-		if (overlapped.hEvent)
-			CloseHandle(overlapped.hEvent);
-		return success;
-	}
+    else {
+        bool success = false;
+        OVERLAPPED overlapped{ 0 };
+        overlapped.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+        if (overlapped.hEvent) {
+            do {
+                MonitorScope scope(_outsyncobj);
+                success = WriteFile(_tap, packet.get(), size, &bytesToWrite, &overlapped);
+                if (!success) {
+                    if (ERROR_IO_PENDING != GetLastError())
+                        break;
+                    if (!overlapped.hEvent) {
+                        if (!GetOverlappedResult(_tap, &overlapped, &bytesToWrite, TRUE))
+                            break;
+                        success = true;
+                    }
+                    else {
+                        DWORD dw = WaitForSingleObject(overlapped.hEvent, INFINITE);
+                        if (dw != WAIT_OBJECT_0)
+                            break;
+                        if (!GetOverlappedResult(_tap, &overlapped, &bytesToWrite, FALSE))
+                            break;
+                        success = true;
+                    }
+                }
+            } while (0);
+            CloseHandle(overlapped.hEvent);
+        }
+        return success;
+    }
 }
 
 std::shared_ptr<Tap::NetworkInterface>& Tap::GetNetworkInterface() {

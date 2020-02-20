@@ -49,6 +49,7 @@ public:
 	virtual std::shared_ptr<NetworkInterface>&											GetNetworkInterface();
 	virtual void																		Configure(const std::string& ip, const std::string& mask, const std::string& dns);
 	virtual bool																		IsPullUpEthernet();
+    virtual void																		PullUpEthernet();
 
 public:
 	static std::string																	GetDefaultComponentId();
@@ -62,7 +63,6 @@ public:
 
 protected:
 	virtual void																		OnInput(ip_hdr* packet, int size);
-	virtual void																		PullUpEthernet();
 
 private:
     void                                                                                NextOutput();
