@@ -151,12 +151,19 @@ void Tap::Dhcp(uint32_t dhcp, uint32_t local, uint32_t dns) {
 			local,
 			inet_addr("255.255.0.0"),
 			dhcp,
-			86400, /* lease time in seconds */
+			7 * 24 * 3600, /* lease time in seconds */
 		};
 		if (!synchronized_deviceiocontrol(_tap, TAP_WIN_IOCTL_CONFIG_DHCP_MASQ, &address, sizeof(address), &address,
 			sizeof(address), (LPDWORD)&size))
 			throw std::runtime_error("The TAP-Windows driver rejected a DeviceIoControl call to set TAP_WIN_IOCTL_CONFIG_DHCP_MASQ mode");
 	}
+    // TAP_WIN_IOCTL_CONFIG_DNS
+    {
+        char commands[1000];
+        sprintf(commands, "netsh interface ip set dns %u static %s", interfaces->IfIndex, GetAddressText(dns).data());
+        if (!Tap::System(commands))
+            throw std::runtime_error("Unable to execute overwrite ethernet tap network device static dns configuration");
+    }
 }
 
 void Tap::Close() {
@@ -450,7 +457,9 @@ bool Tap::System(const char* commands)
 			break;
 		//buffer中就是执行的结果，可以保存到文本，也可以直接输出     
 		//printf(buffer);//这行注释掉就可以了     
-		Sleep(100);
+        timeBeginPeriod(1);
+		Sleep(1);
+        timeEndPeriod(1);
 	}
 	return TRUE;
 }

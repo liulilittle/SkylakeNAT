@@ -17,12 +17,12 @@
 
     public class NATAgingTime // NAT老化时间
     {
-        public int Dns = 60;         // 60s
-        public int Udp = 120;       // 300s
-        public int Icmp = 60;       // 60s
-        public int Tcp = 300;       // 86400s
-        public int Tcp_fin = 10;    // 60s FIN/RST
-        public int Tcp_syn = 10;     // 60s
+        public int Dns = 60;         // 60s （H3C）
+        public int Udp = 300;        // 300s
+        public int Icmp = 60;        // 60s
+        public int Tcp = 86400;      // 86400s
+        public int Tcp_fin = 60;     // 60s FIN/RST
+        public int Tcp_syn = 60;     // 60s
     }
 
     public unsafe class NAT
