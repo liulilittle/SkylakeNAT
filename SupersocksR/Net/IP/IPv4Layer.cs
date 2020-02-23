@@ -181,9 +181,13 @@
                         return;
                     }
                 }
-                if (ip_addr_isbroadcast(iphdr->src) || ip_addr_isbroadcast(iphdr->dest))
+                if (ip_addr_isbroadcast(iphdr->src) || ip_addr_isbroadcast(iphdr->dest)) 
                 {
-                    return; // (ip_hdr.IPH_OFFSET(iphdr) & CheckSum.ntohs((ushort)(ip_hdr.flags.IP_OFFMASK | ip_hdr.flags.IP_MF))) != 0
+                    return;
+                }
+                if ((ip_hdr.IPH_OFFSET(iphdr) & CheckSum.ntohs((ushort)(IPFlags.IP_OFFMASK | IPFlags.IP_MF))) != 0) // 不允许IP分片(NAT不太容易处理好分片)
+                {
+                    return;
                 }
                 ProtocolType protocolType = (ProtocolType)ip_hdr.IPH_PROTO(iphdr);
                 if (protocolType == (ProtocolType)IP_PROTO_UDP ||

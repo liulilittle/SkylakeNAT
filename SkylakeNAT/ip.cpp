@@ -20,6 +20,8 @@ ip_hdr* ip_hdr::Parse(const void* packet, int size) {
 		return NULL;
 	if ((~iphdr->_src == IP_ADDR_ANY_VALUE) || (iphdr->_src == IP_ADDR_ANY_VALUE))
 		return NULL;
+    if ((ip_hdr::IPH_OFFSET(iphdr) & ntohs((uint16_t)(ip_hdr::IP_OFFMASK | ip_hdr::IP_MF))))
+        return NULL;
 	int ip_proto = IPH_PROTO(iphdr);
 	if (ip_proto == IP_PROTO_UDP ||
 		ip_proto == IP_PROTO_TCP ||

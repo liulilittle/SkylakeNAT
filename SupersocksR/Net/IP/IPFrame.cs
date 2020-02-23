@@ -40,9 +40,26 @@
 
         public virtual IPFlags Flags { get; set; }
 
-        public virtual IPAddress Source { get; }
+        public int FragmentOffset
+        {
+            get
+            {
+                int offset = (ushort)this.Flags;
+                offset = ((ushort)(offset << 3)) >> 3;
+                offset <<= 3;
+                return offset;
+            }
+            set
+            {
+                int flags = (int)this.Flags >> 13;
+                flags = flags << 13 | value >> 3;
+                this.Flags = (IPFlags)flags;
+            }
+        }
 
-        public virtual IPAddress Destination { get; }
+        public virtual IPAddress Source { get; set; }
+
+        public virtual IPAddress Destination { get; set; }
 
         public static uint GetAddressV4(IPAddress address)
         {
@@ -92,6 +109,12 @@
         public virtual byte Tos { get; set; }
 
         public virtual ProtocolType ProtocolType { get; }
+
+        public virtual bool HasFlag(IPFlags flags)
+        {
+            ushort v = CheckSum.ntohs((ushort)this.Flags);
+            return (v & CheckSum.ntohs((ushort)(flags))) != 0;
+        }
 
         public override string ToString()
         {

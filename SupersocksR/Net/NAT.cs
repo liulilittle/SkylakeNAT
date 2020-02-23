@@ -580,7 +580,7 @@
             {
                 case ProtocolType.Udp:
                     {
-                        UdpFrame frame = UdpLayer.ParseFrame(packet, false);
+                        UdpFrame frame = UdpLayer.ParseFrame(packet, true);
                         if (frame == null)
                         {
                             return false;
@@ -603,7 +603,7 @@
                     }
                 case ProtocolType.Tcp:
                     {
-                        TcpFrame frame = TcpLayer.ParseFrame(packet, false);
+                        TcpFrame frame = TcpLayer.ParseFrame(packet, true);
                         if (frame == null)
                         {
                             return false;
@@ -693,7 +693,7 @@
 
         protected virtual bool PublicIcmpInput(IPFrame packet)
         {
-            IcmpFrame frame = IcmpLayer.ParseFrame(packet, false); // NDIS5/6内核层已检查过所以无需要重复计算ICMP报文CHECKSUM
+            IcmpFrame frame = IcmpLayer.ParseFrame(packet, true); // NDIS5/6内核层已检查过所以无需要重复计算ICMP报文CHECKSUM
             if (frame == null)
             {
                 return false;
