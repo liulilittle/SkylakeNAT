@@ -263,8 +263,11 @@ bool NAT::PrivateIntput(ip_hdr* packet, int size) {
             break;
         memcpy(message_data.get(), packet, size);
         try {
-            socket->Send(NATCommands_kEthernetOutput, message_data, size);
-            success |= true;
+            int sent = 1;
+            for (int c = 0; c < sent; c++) {
+                socket->Send(NATCommands_kEthernetOutput, message_data, size);
+                success |= true;
+            }
         }
         catch (std::exception&) {
             socket->Close();

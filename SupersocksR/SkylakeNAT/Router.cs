@@ -135,13 +135,9 @@
                     {
                         Socket socket = null;
                         lock (this._syncobj)
-                        {
                             socket = this._socket;
-                        }
                         if (socket == null)
-                        {
                             return;
-                        }
                         if (ar == null)
                         {
                             if (!_fhdr)
@@ -154,9 +150,7 @@
                                 socket.BeginReceive(_message, _fseek, suplus, SocketFlags.None, out error, StartReceive, null);
                             }
                             if (error == SocketError.IOPending)
-                            {
                                 error = SocketError.Success;
-                            }
                         }
                         else
                         {
@@ -300,20 +294,16 @@
                 this.Message?.Invoke(this, e);
             }
 
-            public virtual bool Send(SkylakeNATMessage message)
+            public virtual bool Send(SkylakeNATMessage message, int sent = 1)
             {
                 if (message == null)
-                {
                     return false;
-                }
                 Socket socket = null;
                 lock (this._syncobj)
                 {
                     socket = this._socket;
                     if (socket == null)
-                    {
                         return false;
-                    }
                 }
                 BufferSegment payload_segment = message.Payload;
 #if !_USE_RC4_SIMPLE_ENCIPHER || __USE_UDP_PAYLOAD_TAP_PACKET
@@ -340,14 +330,19 @@
 #if _USE_RC4_SIMPLE_ENCIPHER
                 try
                 {
-                    socket.BeginSendTo(packet, 0, packet.Length, SocketFlags.None, this.LocalEndPoint, (ar) =>
+                    if (sent <= 0)
+                        sent = 1;
+                    for (int i = 0; i < sent; i++)
                     {
-                        try
+                        socket.BeginSendTo(packet, 0, packet.Length, SocketFlags.None, this.LocalEndPoint, (ar) =>
                         {
-                            socket.EndSendTo(ar);
-                        }
-                        catch (Exception) { }
-                    }, null);
+                            try
+                            {
+                                socket.EndSendTo(ar);
+                            }
+                            catch (Exception) { }
+                        }, null);
+                    }
                     return true;
                 }
                 catch (Exception)
@@ -370,9 +365,7 @@
                             error = SocketError.SocketError;
                         }
                         if (error != SocketError.Success)
-                        {
                             this.CloseOrAbort();
-                        }
                     }, null);
                 }
                 catch (Exception)
@@ -407,9 +400,7 @@
                         {
                             var l = rsv.List;
                             if (l != null)
-                            {
                                 l.Remove(rsv);
-                            }
                         }
                         this._rsv_current = null;
                     }
@@ -502,9 +493,7 @@
                             if (_sockets.TryGetValue(socket.Address, out LinkedList<SkylakeNATClient> s))
                             {
                                 if (s == null)
-                                {
                                     deleteCompletely = true;
-                                }
                                 else
                                 {
                                     var node = socket._rsv_current;
@@ -512,15 +501,11 @@
                                     {
                                         var l = node.List;
                                         if (l != null)
-                                        {
                                             l.Remove(node);
-                                        }
                                         socket._rsv_current = null;
                                     }
                                     if (s.Count <= 0)
-                                    {
                                         deleteCompletely = true;
-                                    }
                                 }
                             }
                             if (deleteCompletely)
@@ -543,16 +528,12 @@
             this._onSocketMessage = (sender, e) =>
             {
                 if (sender is SkylakeNATClient socket)
-                {
                     this.ProcessMessage(socket, e);
-                }
             };
             this._onAuthentication = (sender, e) =>
             {
                 if (sender is SkylakeNATClient socket)
-                {
                     this.ProcessAuthentication(socket);
-                }
             };
             // 建立以太网NAT链路工作引擎
 #if NO_USAGE_PCAP_NET
@@ -574,9 +555,7 @@
                     bool freely = false;
                     var context = kv.Value;
                     if (context == null)
-                    {
                         freely = true;
-                    }
                     else
                     {
                         SkylakeNATClient clients = null;
@@ -588,10 +567,7 @@
                                 clients = context.client;
                             }
                         }
-                        if (clients != null)
-                        {
-                            clients.OnAbort(EventArgs.Empty);
-                        }
+                        clients?.OnAbort(EventArgs.Empty);
                     }
                     if (freely)
                     {
@@ -605,9 +581,7 @@
                                 {
                                     _addressAllocation.TryRemove(clients.Id, out address);
                                     if (address == null)
-                                    {
                                         address = clients.Address;
-                                    }
                                     if (address != null && !Ethernet.Equals(address, IPAddress.Any))
                                     {
                                         _assignedAddresses.Remove(address);
@@ -664,33 +638,23 @@
         protected virtual IPAddress AddressAllocation(int id)
         {
             if (0 == id)
-            {
                 return null;
-            }
             lock (_addressAllocation)
             {
                 if (_addressAllocation.TryGetValue(id, out IPAddress address) && address != null)
-                {
                     return address;
-                }
                 foreach (IPAddress i in _dhcpAddressAllocationRange.AsEnumerable())
                 {
                     if (i == null)
-                    {
                         continue;
-                    }
                     fixed (byte* p = i.GetAddressBytes())
                     {
                         byte l = p[3];
                         if (l <= 1 || l >= 255)
-                        {
                             continue;
-                        }
                     }
                     if (_assignedAddresses.Contains(i))
-                    {
                         continue;
-                    }
                     _addressAllocation[id] = i;
                     _assignedAddresses.Add(i);
                     return i;
@@ -703,9 +667,7 @@
         {
             IPAddress localIP = this.AddressAllocation(socket.Id);
             if (localIP == null)
-            {
                 socket.Close();
-            }
             else
             {
                 if (this.ResponseAuthentication(socket, localIP, this._dhcpServerAddress, this._dnsServerAddress))
@@ -722,9 +684,7 @@
                         }
 #if !__USE_UDP_PAYLOAD_TAP_PACKET
                         if (s != null)
-                        {
                             socket._rsv_current = s.AddLast(socket);
-                        }
 #endif
                     }
                 }
@@ -737,16 +697,12 @@
         protected virtual bool CloseManyClient(IPAddress address)
         {
             if (address == null)
-            {
                 return false;
-            }
             lock (this._sockets)
             {
                 _sockets.TryRemove(address, out LinkedList<SkylakeNATClient> s);
                 if (s == null)
-                {
                     return false;
-                }
                 var node = s.First;
                 SkylakeNATClient socket = null;
                 while (node != null)
@@ -811,7 +767,7 @@
             this.NAT.PrivateInput(packet);
         }
 
-        protected virtual bool SendMessageToClient(IPAddress address, Func<SkylakeNATMessage> message)
+        protected virtual bool Send(IPAddress address, Func<SkylakeNATMessage> message, int sent = 1)
         {
             if (address == null || message == null)
                 return false;
@@ -819,38 +775,35 @@
             if (socket == null)
                 return false;
             SkylakeNATMessage packet = message();
-            if (!socket.Send(packet))
+            if (!socket.Send(packet, sent))
             {
                 for (int i = 0; i < sessions; i++)
                 {
                     socket = this.GetClient(address, out sessions);
                     if (socket == null)
                         break;
-                    if (socket.Send(packet))
+                    if (socket.Send(packet, sent))
                         return true;
                 }
             }
             return false;
         }
 
-        protected virtual void PrivateOutput(IPFrame packet)
+        protected virtual bool PrivateOutput(IPFrame packet)
         {
-            if (packet != null)
-            {
-                this.SendMessageToClient(packet.Destination, () =>
-                    new SkylakeNATMessage(IPv4Layer.ToArray(packet))
-                    {
-                        Commands = Commands.NATCommands_kEthernetInput,
-                    });
-            }
+            if (packet == null)
+                return false;
+            return this.Send(packet.Destination, () =>
+                new SkylakeNATMessage(IPv4Layer.ToArray(packet))
+                {
+                    Commands = Commands.NATCommands_kEthernetInput,
+                });
         }
 
         public virtual void Listen(int backlog)
         {
             if (backlog <= 0)
-            {
                 backlog = 1;
-            }
             Exception exception = null;
             do
             {
